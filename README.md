@@ -1,144 +1,193 @@
-# EmberDB
+# StrataDB
 
-**A C++17 LSM-Tree Key-Value Store with a Live React Dashboard**
+### A C++17 LSM-Tree-Based Key-Value Storage Engine with a Live React Dashboard
 
-EmberDB is a learning-focused database systems project that aims to build a key-value storage engine from scratch using C++17. Inspired by storage engines such as RocksDB and LevelDB, it explores how databases manage data in memory, persist it to disk, recover from crashes, and optimize read and write operations.
+StrataDB is a from-scratch key-value storage engine written in **C++17**, inspired by the internal architecture of modern storage systems such as RocksDB and LevelDB.
 
-The project will include a live React dashboard that visualizes storage-engine internals, database operations, performance metrics, and recovery events.
+The goal is to understand and implement how database storage engines manage writes, reads, persistence, indexing, and recovery — rather than relying on an existing database.
 
-> **Status:** Planning and initial setup. Core storage-engine components are not implemented yet.
+StrataDB will use a **Log-Structured Merge Tree (LSM-Tree)** architecture to organize data efficiently, with a React-based dashboard to visualize its internal operations in real time.
 
-## Project Goals
+> **Status:** Planning and development preparation. Features listed below are planned and will be updated as implementation progresses.
 
-- Build a key-value storage engine from scratch in C++17.
-- Understand LSM-Tree architecture and storage-engine internals.
-- Implement persistent storage and crash recovery.
-- Explore efficient lookups using Bloom filters.
-- Implement SSTable merging through compaction.
-- Visualize internal database operations through a live dashboard.
-- Benchmark performance and test correctness.
+---
 
-## Planned Architecture
+## Core Features
+
+The planned implementation includes:
+
+- **Key-Value Operations:** Insert, retrieve, update, and delete key-value pairs.
+- **MemTable:** In-memory storage implemented using a Skip List.
+- **Write-Ahead Log (WAL):** Record writes before applying them to memory for durability.
+- **SSTables:** Store sorted key-value data on disk.
+- **Bloom Filters:** Reduce unnecessary disk lookups.
+- **Compaction:** Merge SSTables and manage obsolete entries.
+- **Range Queries:** Retrieve keys within a specified range.
+- **Crash Recovery:** Restore database state using the WAL.
+- **Performance Benchmarking:** Compare operations against `std::map`.
+- **Live Dashboard:** Visualize storage structures, operations, and performance metrics.
+
+---
+
+## Architecture
 
 ```text
-                 React + Vite Dashboard
-                          |
-                     REST API
-                          |
-                 C++ HTTP Server
-                          |
-                  EmberDB Engine
-                          |
-          +---------------+---------------+
-          |               |               |
-       MemTable           WAL          SSTables
-       Skip List       Recovery      Sorted Files
-          |                               |
-          +---------------+---------------+
-                          |
-                   Bloom Filters
-                          |
-                      Compaction
+                  React + Vite Dashboard
+                           |
+                           | HTTP / JSON
+                           |
+                  C++ HTTP API Server
+                           |
+                           v
+                  StrataDB Storage Engine
+                           |
+              +------------+------------+
+              |            |            |
+           MemTable       WAL        Read Path
+          (Skip List)   (Durability)    |
+              |                         |
+              v                         v
+         Flush to Disk              Bloom Filter
+              |                         |
+              v                         v
+           SSTables <-------------- SSTable Lookup
+              |
+              v
+          Compaction
+              |
+              v
+         Updated SSTables
 ```
 
-The dashboard will communicate with the C++ engine through a REST API, keeping the user interface separate from the storage-engine implementation.
+---
 
-## Planned Features
-
-- **Key-Value Operations:** Insert, retrieve, update, and delete records.
-- **Skip List MemTable:** Maintain recently written records in sorted in-memory order.
-- **Write-Ahead Log (WAL):** Support recovery by replaying logged operations after a crash.
-- **SSTables:** Persist sorted records in immutable on-disk files.
-- **Bloom Filters:** Reduce unnecessary SSTable lookups.
-- **Compaction:** Merge SSTables and clean up obsolete versions and tombstones.
-- **Range Scans:** Retrieve records over a key range in sorted order.
-- **Live Dashboard:** Monitor MemTable usage, SSTables, engine statistics, and events.
-- **Crash Recovery Demo:** Demonstrate data recovery after an unclean shutdown.
-- **Benchmarking:** Measure throughput and compare results against a `std::map` baseline.
-
-## Tech Stack
+## Technology Stack
 
 | Component | Technology |
 |---|---|
-| Storage engine | C++17 |
-| Build system | CMake |
-| Unit testing | GoogleTest |
-| HTTP server | cpp-httplib |
-| JSON serialization | nlohmann/json |
+| Core Engine | C++17 |
+| Build System | CMake |
+| Testing | GoogleTest |
+| In-memory Structure | Skip List |
+| Persistence | Write-Ahead Log |
+| Disk Storage | SSTables |
+| Filtering | Bloom Filters |
+| HTTP Server | cpp-httplib |
+| JSON Serialization | nlohmann/json |
 | Frontend | React + Vite |
 | Styling | Tailwind CSS |
 | Charts | Chart.js |
-| Version control | Git and GitHub |
+| Version Control | Git & GitHub |
+
+---
+
+## Planned Dashboard
+
+The React dashboard will provide visibility into the internal working of StrataDB.
+
+| Panel | Purpose |
+|---|---|
+| Key-Value Console | Execute PUT, GET, and DELETE operations |
+| Latency Monitor | Display operation execution times |
+| MemTable Monitor | Visualize current in-memory entries |
+| SSTable Explorer | Inspect on-disk sorted tables |
+| Bloom Filter Stats | Display filter statistics |
+| Event Log | Monitor database events |
+| Crash Recovery | Simulate crashes and recovery |
+| Benchmark Runner | Compare StrataDB against `std::map` |
+
+---
 
 ## Development Roadmap
 
-The project is planned in four milestones.
-
-### Phase 1 — In-Memory Core
-- Set up the project structure and build system.
-- Implement the skip list and MemTable.
-- Add memory usage tracking, statistics, and an event log.
-- Write unit tests.
+### Phase 1 — In-Memory Storage Engine
+- Configure CMake and GoogleTest.
+- Implement a Skip List.
+- Build the MemTable.
+- Implement basic key-value operations.
+- Introduce statistics and event logging.
 
 ### Phase 2 — Persistence and Recovery
 - Implement the Write-Ahead Log.
-- Create SSTables and a sparse index.
-- Add Bloom filters.
-- Implement and test crash recovery.
+- Implement SSTable creation and storage.
+- Add sparse indexing.
+- Implement Bloom Filters.
+- Build crash recovery.
 
-### Phase 3 — Reads and Compaction
+### Phase 3 — Read Path and Compaction
 - Implement the complete read path.
-- Add range scans.
-- Implement single-level SSTable compaction.
-- Expose database operations through a REST API.
+- Add SSTable lookups.
+- Implement range scans.
+- Build single-level compaction using a k-way merge.
 
-### Phase 4 — Dashboard and Benchmarking
-- Build the React dashboard.
-- Visualize storage statistics and engine events.
-- Add crash-recovery controls.
-- Implement benchmarks and document results.
+### Phase 4 — API and Dashboard
+- Build the HTTP API using cpp-httplib.
+- Connect the API to the storage engine.
+- Develop the React + Vite dashboard.
+- Visualize database statistics and events.
+- Add benchmarking and performance charts.
+
+---
 
 ## Project Structure
 
-The repository will evolve toward the following structure as development progresses.
+The following is the intended project structure and may evolve during development.
 
 ```text
-EmberDB/
-├── include/
-│   └── emberdb/
-├── src/
+StrataDB/
+│
+├── engine/
+│   ├── include/
+│   ├── src/
+│   └── tests/
+│
 ├── server/
+│   ├── include/
+│   └── src/
+│
 ├── dashboard/
-├── tests/
+│   ├── src/
+│   ├── public/
+│   └── package.json
+│
+├── benchmarks/
+│
 ├── docs/
-├── scripts/
+│
 ├── CMakeLists.txt
 ├── .gitignore
 └── README.md
 ```
 
-## Testing and Benchmarks
-
-Correctness will be validated with unit and integration tests covering key-value operations, persistence, recovery, Bloom filters, range scans, and compaction.
-
-Performance benchmarks will measure operations per second and compare equivalent workloads against a `std::map` baseline. Results and test conditions will be documented once the implementation is available.
+---
 
 ## Learning Objectives
 
-Through EmberDB, I aim to deepen my understanding of:
+Building StrataDB will involve exploring:
 
-- Data structures and algorithms used in storage systems.
-- File I/O and persistent data formats.
-- Database indexing and query paths.
-- Crash recovery and data durability.
-- Storage-engine performance and trade-offs.
-- C++ systems programming and testing.
-- Full-stack integration between C++ services and React.
+- Database storage engine architecture.
+- Log-Structured Merge Trees.
+- In-memory indexing and Skip Lists.
+- Disk-based data structures.
+- Write durability and crash recovery.
+- Bloom filters and probabilistic data structures.
+- Compaction and data organization.
+- C++ systems programming.
+- HTTP API design and frontend integration.
+- Performance benchmarking.
 
-## Current Status
+---
 
-EmberDB is currently in the planning stage. Features listed above represent the intended scope and are not yet claimed as implemented.
+## Project Goals
+
+StrataDB is intended to be an educational yet technically substantial implementation of a storage engine.
+
+The focus is on understanding how data moves from memory to disk, how reads are served efficiently, and how a database recovers after failure.
+
+The dashboard will make these otherwise hidden internal operations observable.
+
+---
 
 ## License
 
-This project is intended to be released under the MIT License. A license will apply once the corresponding license file is added to the repository.
+License to be decided.
