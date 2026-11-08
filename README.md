@@ -2,130 +2,162 @@
 
 ### A C++17 LSM-Tree Based Key-Value Storage Engine
 
-StrataDB is a key-value storage engine being built from scratch in C++17, based on the **Log-Structured Merge-Tree (LSM-Tree)** architecture.
+StrataDB is a learning-focused key-value storage engine built from scratch in C++17, inspired by the architecture of storage engines such as RocksDB and LevelDB.
 
-The goal is to understand and implement the core internals of modern storage engines, including memory-based indexing, write-ahead logging, sorted disk storage, Bloom filters, compaction, and crash recovery.
+The project explores how modern storage engines manage in-memory data, persistent writes, sorted disk files, and efficient key lookups using fundamental data structures and storage-engine concepts.
 
-A React-based dashboard is also planned to visualize database operations and performance metrics.
+**Repository:** [Amrittt22/StrataDB](https://github.com/Amrittt22/StrataDB)
 
 ---
 
 ## Project Status
 
-**Currently in development — Day 1 completed.**
+**Current milestone: Day 2 – Core Storage Components Implemented**
 
-| Component | Status |
-|---|---|
-| Project setup with CMake | Implemented |
-| Skip List | Implemented |
-| MemTable | Implemented |
-| Statistics module | Implemented |
-| Console event logger | Implemented |
-| Unit testing with GoogleTest | Implemented |
-| Write-Ahead Log (WAL) | Planned |
-| SSTables | Planned |
-| Bloom Filters | Planned |
-| Compaction | Planned |
-| Crash Recovery | Planned |
-| Range Queries | Planned |
-| HTTP API | Planned |
-| React Dashboard | Planned |
-| Performance Benchmarks | Planned |
+- 54 unit tests passing.
+- Skip List-based MemTable.
+- Write-Ahead Log (WAL) with recovery.
+- Immutable SSTable file writer and reader.
+- Bloom Filter integrated into SSTable lookups.
+
+The complete LSM-tree workflow, including automatic flushing, compaction, and the REST API, is still under development.
+
+---
 
 ## Architecture
 
-StrataDB is designed around an LSM-Tree storage architecture.
+StrataDB is being developed around an LSM-tree (Log-Structured Merge-Tree) architecture.
 
 ```text
-             Client Applications
-                     |
-                     v
-              HTTP API Layer
-                     |
-                     v
-               MemTable
-              (Skip List)
-                     |
-                     v
-             Write-Ahead Log
-                     |
-                     v
-             Immutable MemTable
-                     |
-                     v
-                SSTables
-              (Disk Storage)
-                     |
-              +------+------+
-              |             |
-              v             v
-          Bloom Filter   Compaction
-              |
-              v
-          Read Operations
+              Client Application
+                      |
+                      v
+                Key-Value API
+                 (Planned)
+                      |
+                      v
+                +-----------+
+                |  MemTable |
+                | Skip List |
+                +-----------+
+                      |
+             +--------+--------+
+             |                 |
+             v                 v
+        Write-Ahead Log    Read Lookup
+             |                 |
+             v                 v
+          Disk Log         SSTables
+                              |
+                       +------+------+
+                       |             |
+                       v             v
+                  Bloom Filter   Binary Search
+                       |
+                       v
+                  Key Retrieval
 ```
 
-*Note: This represents the planned architecture. Persistent storage components are still under development.*
+*Note: The complete read path and automatic MemTable-to-SSTable flushing are planned integration work.*
+
+---
 
 ## Implemented Features
 
 ### 1. Skip List
 
-A probabilistic data structure used as the indexing mechanism for the MemTable.
+A probabilistic ordered data structure used as the underlying storage structure for the MemTable.
 
-- Ordered key-value storage.
-- Efficient insertion and search.
-- Key deletion.
-- Updating existing keys.
+- Insert key-value pairs.
+- Search for keys.
+- Delete keys.
+- Update existing values.
+- Ordered traversal of entries.
 - Randomized node levels.
 
 ### 2. MemTable
 
-An in-memory key-value storage layer built on top of the custom Skip List.
+An in-memory data structure built on top of the Skip List.
 
-- Insert key-value pairs.
-- Retrieve values using keys.
-- Update existing entries.
-- Delete entries.
-- Track the number of entries.
+- Stores key-value pairs.
+- Supports PUT, GET, and DELETE operations.
+- Tracks the number of stored entries.
+- Exposes sorted entries for SSTable generation.
+- Integrates with the Write-Ahead Log.
 
-### 3. Statistics Module
+### 3. Write-Ahead Log (WAL)
 
-Tracks database operation metrics.
+The WAL provides persistent operation logging and startup recovery.
 
-- Total PUT operations.
-- Total GET operations.
-- Total DELETE operations.
-- Successful GET operations.
-- Failed GET operations.
-- Total operation count.
+- Appends PUT and DELETE records.
+- Stores records in binary format.
+- Replays operations during startup.
+- Recovers the MemTable after a restart.
+- Detects and truncates incomplete trailing records.
 
-### 4. Event Logger
+**Current limitation:** The implementation uses stream flushing but does not yet guarantee physical disk durability through OS-level synchronization such as `fsync` or `FlushFileBuffers`.
 
-A lightweight console logging system with three logging levels:
+### 4. SSTable (Sorted String Table)
 
-- INFO
-- WARNING
-- ERROR
+SSTables provide an immutable, sorted on-disk representation of key-value entries.
 
-### 5. Unit Testing
+Implemented capabilities:
 
-GoogleTest is used to validate the core data structures and components.
+- Binary SSTable file format.
+- Sorted key-value serialization.
+- SSTable file loading.
+- Key lookup using binary search.
+- Validation of file headers and entry ordering.
+- Handling of binary keys and values.
+- Duplicate-key rejection during writing.
 
-The current test suite covers Skip List, MemTable, Statistics, and Logger functionality.
+**Current implementation detail:** The reader loads the SSTable entries into memory. An on-disk sparse index and fully disk-backed lookup are planned improvements.
 
-## Technology Stack
+### 5. Bloom Filter
+
+A probabilistic data structure used to avoid unnecessary SSTable lookups.
+
+- Configurable expected number of entries.
+- Configurable false-positive probability.
+- Multiple hash functions.
+- Fast membership checks.
+- No false negatives for correctly inserted keys.
+
+The Bloom Filter is currently built when an SSTable is loaded rather than persisted as a separate on-disk structure.
+
+### 6. Testing
+
+GoogleTest is used for unit testing the storage engine.
+
+Current test coverage includes:
+
+- Skip List operations.
+- MemTable operations.
+- WAL append and replay.
+- Recovery after restart.
+- Truncated WAL recovery.
+- SSTable serialization and deserialization.
+- Binary key-value handling.
+- Bloom Filter membership checks.
+- Invalid SSTable handling.
+
+**Latest reported result: 54/54 tests passing.**
+
+---
+
+## Tech Stack
 
 | Technology | Purpose |
 |---|---|
 | C++17 | Core storage engine |
 | CMake | Build system |
-| Ninja | Build generator |
+| Ninja | Build execution |
 | GoogleTest | Unit testing |
-| React | Planned dashboard |
-| Vite | Planned frontend tooling |
-| Tailwind CSS | Planned dashboard styling |
-| Chart.js | Planned performance visualizations |
+| STL | Data structures and utilities |
+| Binary File I/O | Persistent storage |
+| Git & GitHub | Version control |
+
+---
 
 ## Project Structure
 
@@ -137,36 +169,48 @@ StrataDB/
 │   │   ├── SkipList.h
 │   │   ├── MemTable.h
 │   │   ├── Stats.h
-│   │   └── Logger.h
+│   │   ├── Logger.h
+│   │   ├── WAL.h
+│   │   ├── BloomFilter.h
+│   │   └── SSTable.h
 │   │
 │   ├── src/
 │   │   ├── main.cpp
 │   │   ├── SkipList.cpp
 │   │   ├── MemTable.cpp
 │   │   ├── Stats.cpp
-│   │   └── Logger.cpp
+│   │   ├── Logger.cpp
+│   │   ├── WAL.cpp
+│   │   ├── BloomFilter.cpp
+│   │   └── SSTable.cpp
 │   │
 │   └── tests/
 │       ├── test_main.cpp
 │       ├── skiplist_test.cpp
 │       ├── memtable_test.cpp
 │       ├── stats_test.cpp
-│       └── logger_test.cpp
+│       ├── logger_test.cpp
+│       ├── wal_test.cpp
+│       ├── bloom_filter_test.cpp
+│       └── sstable_test.cpp
 │
 ├── benchmarks/
 ├── docs/
 ├── CMakeLists.txt
-└── README.md
+├── README.md
+└── .gitignore
 ```
 
-## Getting Started
+---
+
+## Building and Running
 
 ### Prerequisites
 
-- C++17 compatible compiler
-- CMake
-- Ninja build system
-- Git
+- C++17 compatible compiler.
+- CMake.
+- Ninja (if using the Ninja generator).
+- Git.
 
 ### Clone the Repository
 
@@ -187,53 +231,102 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ```
 
-### Run the Database
-
-On Windows:
-
-```powershell
-.\build\stratadb.exe
-```
-
-### Run Unit Tests
+### Run Tests
 
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
-GoogleTest is fetched through CMake FetchContent during configuration.
+For the Windows MSYS2 UCRT64 environment, ensure the UCRT64 `bin` directory is first in your PATH before building and running tests.
+
+---
 
 ## Development Roadmap
 
-### Phase 1 — In-Memory Storage Foundation
-- [x] CMake project setup
-- [x] Skip List implementation
-- [x] MemTable implementation
-- [x] Statistics module
-- [x] Event logger
-- [x] Unit tests
+### Day 1 – In-Memory Core and Observability
 
-### Phase 2 — Persistent Storage
-- [ ] Write-Ahead Log
-- [ ] SSTable implementation
-- [ ] Bloom Filters
-- [ ] Crash Recovery
+- [x] CMake project setup.
+- [x] Skip List implementation.
+- [x] MemTable implementation.
+- [x] Statistics tracking.
+- [x] Console Logger.
+- [x] Unit tests.
 
-### Phase 3 — Storage Engine Operations
-- [ ] Read path optimization
-- [ ] Tombstone-based deletion
-- [ ] Compaction
-- [ ] Range queries
+### Day 2 – Persistence and Storage Components
 
-### Phase 4 — API and Dashboard
-- [ ] HTTP server
-- [ ] REST API endpoints
-- [ ] React dashboard
-- [ ] Live operation metrics
-- [ ] Performance charts
+- [x] Write-Ahead Log.
+- [x] WAL replay and recovery.
+- [x] Sorted Skip List traversal.
+- [x] SSTable writer.
+- [x] SSTable reader.
+- [x] Bloom Filter implementation.
+- [x] Bloom Filter integration with SSTable lookup.
+- [x] Unit tests for storage components.
 
-### Phase 5 — Benchmarking and Optimization
-- [ ] Read/write benchmarks
-- [ ] Performance comparisons
-- [ ] Memory usage analysis
-- [ ] Documentation and
+### Day 3 – LSM Integration and Backend
+
+- [ ] Automatic MemTable flushing.
+- [ ] Safe WAL rotation and checkpointing.
+- [ ] Tombstone-based deletion.
+- [ ] Multiple SSTable management.
+- [ ] Integrated read path across MemTable and SSTables.
+- [ ] SSTable version resolution.
+- [ ] SSTable compaction.
+- [ ] Range scan support.
+- [ ] REST API.
+
+### Day 4 – Dashboard and Optimization
+
+- [ ] React dashboard.
+- [ ] Live MemTable statistics.
+- [ ] SSTable visualization.
+- [ ] Bloom Filter statistics.
+- [ ] Engine event log.
+- [ ] Benchmarking.
+- [ ] Performance optimization.
+- [ ] Documentation and demo.
+
+---
+
+## Concepts Explored
+
+Through StrataDB, the project explores:
+
+- Log-Structured Merge Trees (LSM Trees).
+- Skip Lists and probabilistic data structures.
+- Write-Ahead Logging and recovery.
+- Immutable sorted storage files.
+- Bloom Filters and probabilistic membership testing.
+- Binary serialization and deserialization.
+- C++ memory management and RAII.
+- Unit testing and modular software design.
+- Database storage-engine architecture.
+
+---
+
+## Future Improvements
+
+- Persistent SSTable indexes.
+- On-disk Bloom Filter metadata.
+- Checksums and stronger corruption detection.
+- Crash-safe WAL synchronization.
+- Efficient disk-backed SSTable lookups.
+- Multi-level compaction.
+- Concurrent reads and writes.
+- Performance benchmarking against standard data structures.
+
+---
+
+## Author
+
+**Amritanshu Singh**
+
+Computer Science Engineering Student  
+Nitte Meenakshi Institute of Technology, Bengaluru
+
+- GitHub: [@Amrittt22](https://github.com/Amrittt22)
+- LinkedIn: [Amritanshu Kumar Singh](https://www.linkedin.com/in/amritanshu-kumar-singh-203254333/)
+
+---
+
+*StrataDB is an educational project developed to understand the internal architecture and engineering principles behind modern key-value storage engines.*

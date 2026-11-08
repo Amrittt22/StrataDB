@@ -141,3 +141,17 @@ bool SkipList::remove(const std::string& key) {
 
     return true;
 }
+
+std::vector<std::pair<std::string, std::string>>
+SkipList::getAllEntries() const {
+    std::vector<std::pair<std::string, std::string>> entries;
+
+    Node* current = head->forward[0];
+
+    while (current != nullptr) {
+        entries.push_back({current->key, current->value});
+        current = current->forward[0];
+    }
+
+    return entries;
+}

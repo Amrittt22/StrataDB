@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <random>
+#include <utility>
 
 class SkipList {
 private:
@@ -45,6 +46,8 @@ public:
                 std::string& value) const;
 
     bool remove(const std::string& key);
+
+    std::vector<std::pair<std::string, std::string>> getAllEntries() const;
 };
 
 #endif

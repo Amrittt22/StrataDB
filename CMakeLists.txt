@@ -27,6 +27,9 @@ add_executable(stratadb
     engine/src/MemTable.cpp
     engine/src/Stats.cpp
     engine/src/Logger.cpp
+    engine/src/WAL.cpp
+    engine/src/BloomFilter.cpp
+    engine/src/SSTable.cpp
 )
 target_include_directories(stratadb PRIVATE
     engine/include
@@ -42,10 +45,16 @@ add_executable(stratadb_tests
     engine/tests/memtable_test.cpp
     engine/tests/stats_test.cpp
     engine/tests/logger_test.cpp
+    engine/tests/wal_test.cpp
     engine/src/SkipList.cpp
     engine/src/MemTable.cpp
     engine/src/Stats.cpp
     engine/src/Logger.cpp
+    engine/src/WAL.cpp
+    engine/src/BloomFilter.cpp
+    engine/src/SSTable.cpp
+    engine/tests/bloom_filter_test.cpp
+    engine/tests/sstable_test.cpp
 )
 
 target_include_directories(stratadb_tests PRIVATE
@@ -64,5 +73,4 @@ if(MSVC)
 else()
     target_compile_options(stratadb PRIVATE -Wall -Wextra -Wpedantic)
 endif()
-
 
