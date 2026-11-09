@@ -111,3 +111,97 @@ TEST_F(SSTableTest, DoesNotFindMissingKey) {
     std::string value;
     EXPECT_FALSE(table.get("mango", value));
 }
+
+TEST_F(SSTableTest, WritesAndLoadsTombstone) {
+    std::vector<SSTableEntry> data = {
+        {"apple", "", true},
+        {"banana", "yellow", false}
+    };
+
+    ASSERT_TRUE(SSTable::writeEntries(testFile, data));
+
+    SSTable table;
+
+    ASSERT_TRUE(table.load(testFile));
+
+    EXPECT_EQ(table.size(), 2);
+}
+
+TEST_F(SSTableTest, TombstoneLookupIsDistinguishable) {
+    std::vector<SSTableEntry> data = {
+        {"apple", "", true},
+        {"banana", "yellow", false}
+    };
+
+    ASSERT_TRUE(SSTable::writeEntries(testFile, data));
+
+    SSTable table;
+    ASSERT_TRUE(table.load(testFile));
+
+    std::string value;
+
+    EXPECT_EQ(
+        table.lookup("apple", value),
+        LookupResult::TOMBSTONE_FOUND
+    );
+
+    EXPECT_EQ(
+        table.lookup("banana", value),
+        LookupResult::VALUE_FOUND
+    );
+
+    EXPECT_EQ(value, "yellow");
+
+    EXPECT_EQ(
+        table.lookup("mango", value),
+        LookupResult::NOT_FOUND
+    );
+}
+
+TEST_F(SSTableTest, BloomFilterIncludesTombstones) {
+    std::vector<SSTableEntry> data = {
+        {"deleted-key", "", true},
+        {"live-key", "value", false}
+    };
+
+    ASSERT_TRUE(SSTable::writeEntries(testFile, data));
+
+    SSTable table;
+    ASSERT_TRUE(table.load(testFile));
+
+    EXPECT_TRUE(table.mightContain("deleted-key"));
+    EXPECT_TRUE(table.mightContain("live-key"));
+}
+
+TEST_F(SSTableTest, RejectsTombstoneWithNonEmptyValue) {
+    std::vector<SSTableEntry> data = {
+        {"apple", "red", true}
+    };
+
+    EXPECT_FALSE(SSTable::writeEntries(testFile, data));
+}
+
+TEST_F(SSTableTest, RejectsDuplicateTombstoneKeys) {
+    std::vector<SSTableEntry> data = {
+        {"apple", "", true},
+        {"apple", "red", false}
+    };
+
+    EXPECT_FALSE(SSTable::writeEntries(testFile, data));
+}
+
+TEST_F(SSTableTest, LegacyVersionOneFileIsRejected) {
+    {
+        std::ofstream out(testFile, std::ios::binary);
+
+        const char oldMagic[8] = {
+            'S', 'T', 'R', 'A', 'T', 'A', 'S', '1'
+        };
+
+        out.write(oldMagic, sizeof(oldMagic));
+    }
+
+    SSTable table;
+
+    EXPECT_FALSE(table.load(testFile));
+}

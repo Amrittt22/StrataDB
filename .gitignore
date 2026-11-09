@@ -1,61 +1,71 @@
-# Build directories
+# ==============================
+# Build directories and binaries
+# ==============================
 build/
-Build/
-build-*/
 cmake-build-*/
+out/
+bin/
+obj/
 
-# Compiled files
-*.exe
-*.out
-*.app
 *.o
 *.obj
-*.slo
-*.lo
-*.dll
-*.so
-*.so.*
-*.dylib
 *.a
 *.lib
-*.lai
-*.la
+*.dll
+*.exe
+*.so
+*.dylib
 
-# CMake generated files
+# ==============================
+# CMake and Ninja generated files
+# ==============================
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
-install_manifest.txt
+build.ninja
+.ninja_deps
+.ninja_log
 compile_commands.json
 
-# Precompiled headers
-*.gch
-*.pch
+# ==============================
+# StrataDB runtime data
+# ==============================
+stratadb_data/
+my_database/
+data/
 
-# Debug files
-*.ilk
-*.pdb
-*.dwo
+*.wal
+*.sst
+MANIFEST
+MANIFEST.tmp
 
-# Temporary and log files
-*.tmp
+# ==============================
+# Logs
+# ==============================
 *.log
-*.bak
-*.swp
-*.d
+logs/
 
-# IDE files
+# ==============================
+# IDE and editor files
+# ==============================
 .vscode/
 .idea/
-
-# Test output and cache
-Testing/
-.cache/
-
-# vcpkg
-vcpkg_installed/
-
-# OS files
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
+
+# ==============================
+# Temporary files
+# ==============================
+*.tmp
+*.temp
+*.bak
+
+# ==============================
+# Frontend dependencies (Day 4)
+# ==============================
+.env
+.env.*
+!.env.example

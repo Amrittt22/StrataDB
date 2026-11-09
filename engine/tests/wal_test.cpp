@@ -221,3 +221,52 @@ TEST(WALTest, MissingWalFileIsEmptyLog) {
 
     cleanWal();
 }
+TEST(WALTest, SequenceNumbersSurviveReplay) {
+
+    cleanWal();
+
+    {
+        MemTable table(TEST_MEMTABLE_WAL);
+
+        ASSERT_TRUE(table.put("name", "old"));
+        ASSERT_TRUE(table.put("name", "new"));
+        ASSERT_TRUE(table.remove("name"));
+
+        EXPECT_EQ(table.getLastSequence(), 3u);
+    }
+
+    {
+        MemTable recovered(TEST_MEMTABLE_WAL);
+
+        EXPECT_EQ(recovered.getLastSequence(), 3u);
+        EXPECT_EQ(recovered.getNextSequence(), 4u);
+
+        EXPECT_TRUE(recovered.hasTombstone("name"));
+    }
+
+    cleanWal();
+}
+
+TEST(WALTest, NewWritesContinueAfterRecovery) {
+
+    cleanWal();
+
+    {
+        MemTable table(TEST_MEMTABLE_WAL);
+
+        ASSERT_TRUE(table.put("a", "one"));
+        ASSERT_TRUE(table.put("b", "two"));
+    }
+
+    {
+        MemTable recovered(TEST_MEMTABLE_WAL);
+
+        EXPECT_EQ(recovered.getNextSequence(), 3u);
+
+        ASSERT_TRUE(recovered.put("c", "three"));
+
+        EXPECT_EQ(recovered.getLastSequence(), 3u);
+    }
+
+    cleanWal();
+}

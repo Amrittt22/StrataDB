@@ -1,0 +1,384 @@
+#include "../include/Database.h"
+
+#include "httplib.h"
+
+#include <cstdlib>
+#include <iostream>
+#include <stdexcept>
+#include <map>
+#include <mutex>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+// All requests share one database instance.
+// The mutex protects the current single-writer storage engine.
+std::mutex databaseMutex;
+
+// Escape strings for valid JSON output.
+std::string jsonEscape(const std::string& input) {
+
+    std::ostringstream output;
+
+    for (unsigned char c : input) {
+
+        switch (c) {
+
+            case '"':
+                output << "\\\"";
+                break;
+
+            case '\\':
+                output << "\\\\";
+                break;
+
+            case '\b':
+                output << "\\b";
+                break;
+
+            case '\f':
+                output << "\\f";
+                break;
+
+            case '\n':
+                output << "\\n";
+                break;
+
+            case '\r':
+                output << "\\r";
+                break;
+
+            case '\t':
+                output << "\\t";
+                break;
+
+            default:
+                if (c < 0x20) {
+                    const char* hex = "0123456789abcdef";
+
+                    output << "\\u00";
+                    output << hex[(c >> 4) & 0x0F];
+                    output << hex[c & 0x0F];
+                } else {
+                    output << static_cast<char>(c);
+                }
+        }
+    }
+
+    return output.str();
+}
+
+void sendJson(
+    httplib::Response& response,
+    int status,
+    const std::string& body
+) {
+    response.status = status;
+
+    response.set_content(
+        body,
+        "application/json"
+    );
+}
+
+void sendError(
+    httplib::Response& response,
+    int status,
+    const std::string& message
+) {
+    sendJson(
+        response,
+        status,
+        "{\"success\":false,\"error\":\"" +
+            jsonEscape(message) +
+        "\"}"
+    );
+}
+
+int main(int argc, char* argv[]) {
+
+    std::string dataDirectory = "./stratadb_data";
+    int port = 8080;
+
+    if (argc >= 2) {
+        dataDirectory = argv[1];
+    }
+
+    if (argc >= 3) {
+        try {
+            std::size_t parsedLength = 0;
+            port = std::stoi(argv[2], &parsedLength);
+
+            if (parsedLength != std::string(argv[2]).size()) {
+                throw std::invalid_argument("port contains non-numeric characters");
+            }
+        } catch (const std::invalid_argument&) {
+            std::cerr << "Invalid port\n";
+            return 1;
+        } catch (const std::out_of_range&) {
+            std::cerr << "Invalid port\n";
+            return 1;
+        }
+    }
+
+    if (port < 1 || port > 65535) {
+        std::cerr << "Port must be between 1 and 65535\n";
+        return 1;
+    }
+
+    Database database(dataDirectory, 1000);
+
+    if (!database.open()) {
+        std::cerr << "Failed to open StrataDB\n";
+        return 1;
+    }
+
+    httplib::Server server;
+
+    // CORS headers for the React development server.
+    // Restrict the origin before exposing this server publicly.
+    server.set_default_headers({
+        {"Access-Control-Allow-Origin", "*"},
+        {"Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS"},
+        {"Access-Control-Allow-Headers", "Content-Type"}
+    });
+
+    // CORS preflight.
+    server.Options(R"(/.*)", [](const httplib::Request&,
+                                httplib::Response& response) {
+        response.status = 204;
+    });
+
+    // ------------------------------------------------
+    // HEALTH
+    // GET /health
+    // ------------------------------------------------
+
+    server.Get("/health", [](const httplib::Request&,
+                             httplib::Response& response) {
+
+        sendJson(
+            response,
+            200,
+            R"({"success":true,"status":"healthy","engine":"StrataDB"})"
+        );
+    });
+
+    // ------------------------------------------------
+    // PUT
+    // PUT /kv/:key
+    //
+    // Request body = raw value.
+    // ------------------------------------------------
+
+    server.Put(
+        R"(/kv/(.+))",
+        [&](const httplib::Request& request,
+            httplib::Response& response) {
+
+            const std::string key = request.matches[1].str();
+            const std::string value = request.body;
+
+            if (key.empty()) {
+                sendError(response, 400, "Key cannot be empty");
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(databaseMutex);
+
+            if (!database.put(key, value)) {
+                sendError(response, 500, "Failed to store value");
+                return;
+            }
+
+            std::string json =
+                "{\"success\":true,"
+                "\"message\":\"Value stored\","
+                "\"key\":\"" + jsonEscape(key) + "\"}";
+
+            sendJson(response, 200, json);
+        }
+    );
+
+    // ------------------------------------------------
+    // GET
+    // GET /kv/:key
+    // ------------------------------------------------
+
+    server.Get(
+        R"(/kv/(.+))",
+        [&](const httplib::Request& request,
+            httplib::Response& response) {
+
+            const std::string key = request.matches[1].str();
+
+            std::lock_guard<std::mutex> lock(databaseMutex);
+
+            std::string value;
+
+            if (!database.get(key, value)) {
+                sendError(response, 404, "Key not found");
+                return;
+            }
+
+            std::string json =
+                "{\"success\":true,"
+                "\"key\":\"" + jsonEscape(key) + "\","
+                "\"value\":\"" + jsonEscape(value) + "\"}";
+
+            sendJson(response, 200, json);
+        }
+    );
+
+    // ------------------------------------------------
+    // DELETE
+    // DELETE /kv/:key
+    // ------------------------------------------------
+
+    server.Delete(
+        R"(/kv/(.+))",
+        [&](const httplib::Request& request,
+            httplib::Response& response) {
+
+            const std::string key = request.matches[1].str();
+
+            std::lock_guard<std::mutex> lock(databaseMutex);
+
+            if (!database.remove(key)) {
+                sendError(response, 404, "Key not found");
+                return;
+            }
+
+            sendJson(
+                response,
+                200,
+                "{\"success\":true,\"message\":\"Key deleted\"}"
+            );
+        }
+    );
+
+    // ------------------------------------------------
+    // SCAN
+    // GET /scan?start=a&end=z
+    // ------------------------------------------------
+
+    server.Get(
+        "/scan",
+        [&](const httplib::Request& request,
+            httplib::Response& response) {
+
+            if (!request.has_param("start") ||
+                !request.has_param("end")) {
+
+                sendError(
+                    response,
+                    400,
+                    "Both start and end query parameters are required"
+                );
+
+                return;
+            }
+
+            const std::string startKey =
+                request.get_param_value("start");
+
+            const std::string endKey =
+                request.get_param_value("end");
+
+            if (startKey > endKey) {
+                sendError(
+                    response,
+                    400,
+                    "Start key must not be greater than end key"
+                );
+
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(databaseMutex);
+
+            const auto rows =
+                database.scan(startKey, endKey);
+
+            std::ostringstream json;
+
+            json << "{\"success\":true,\"count\":"
+                 << rows.size()
+                 << ",\"results\":[";
+
+            for (std::size_t i = 0; i < rows.size(); ++i) {
+
+                if (i > 0) {
+                    json << ",";
+                }
+
+                json
+                    << "{"
+                    << "\"key\":\""
+                    << jsonEscape(rows[i].first)
+                    << "\","
+                    << "\"value\":\""
+                    << jsonEscape(rows[i].second)
+                    << "\""
+                    << "}";
+            }
+
+            json << "]}";
+
+            sendJson(response, 200, json.str());
+        }
+    );
+
+    // ------------------------------------------------
+    // STATS
+    // GET /stats
+    // ------------------------------------------------
+
+    server.Get(
+        "/stats",
+        [&](const httplib::Request&,
+            httplib::Response& response) {
+
+            std::lock_guard<std::mutex> lock(databaseMutex);
+
+            std::ostringstream json;
+
+            json
+                << "{"
+                << "\"success\":true,"
+                << "\"memtable_size\":"
+                << database.memTableSize()
+                << ","
+                << "\"sstable_count\":"
+                << database.sstableCount()
+                << ","
+                << "\"auto_flush_success\":"
+                << (
+                    database.wasLastAutoFlushSuccessful()
+                        ? "true"
+                        : "false"
+                )
+                << "}";
+
+            sendJson(response, 200, json.str());
+        }
+    );
+
+    std::cout << "=================================\n";
+    std::cout << "       StrataDB HTTP Server\n";
+    std::cout << "=================================\n";
+    std::cout << "Data directory: " << dataDirectory << '\n';
+    std::cout << "Port: " << port << '\n';
+    std::cout << "Health: http://127.0.0.1:"
+              << port << "/health\n";
+    std::cout << "=================================\n";
+
+    // Bind to localhost for development.
+    if (!server.listen("127.0.0.1", port)) {
+        std::cerr << "Failed to start HTTP server\n";
+        return 1;
+    }
+
+    return 0;
+}
