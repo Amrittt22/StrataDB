@@ -2,11 +2,11 @@
 
 ### A C++ LSM-Tree-Based Key-Value Storage Engine
 
-StrataDB is a lightweight persistent key-value storage engine built from scratch in C++. It explores the internal architecture of modern storage systems through concepts such as Log-Structured Merge Trees (LSM-Trees), Write-Ahead Logging (WAL), MemTables, SSTables, Bloom Filters, tombstones, compaction, and checkpoint-based recovery.
+StrataDB is a persistent key-value storage engine built from scratch in C++17. It explores the internal architecture of modern storage systems through concepts such as Log-Structured Merge Trees (LSM-Trees), Write-Ahead Logging (WAL), MemTables, SSTables, Bloom Filters, tombstones, compaction, and checkpoint-based recovery.
 
-The project also includes a C++ HTTP REST API and a React dashboard, allowing users to interact with the storage engine through a graphical interface.
+The project also includes a C++ HTTP REST API, a React and TypeScript dashboard, and a standalone benchmarking executable.
 
-> **Project status:** Core storage engine, recovery mechanisms, automatic flushing, HTTP REST API, and React dashboard implemented and integration-tested.
+> **Project status:** Core storage engine, WAL recovery, automatic flushing, SSTable compaction, HTTP REST API, React dashboard, regression tests, and initial performance benchmarks implemented.
 
 ---
 
@@ -23,8 +23,8 @@ The project also includes a C++ HTTP REST API and a React dashboard, allowing us
 - [REST API](#rest-api)
 - [React Dashboard](#react-dashboard)
 - [Testing](#testing)
+- [Benchmarking](#benchmarking)
 - [Current Limitations](#current-limitations)
-- [Future Improvements](#future-improvements)
 - [Author](#author)
 
 ---
@@ -42,10 +42,19 @@ Sequence numbers allow the engine to distinguish between different versions of a
 The project provides:
 
 - A persistent C++ key-value storage engine.
-- An HTTP REST API implemented in C++.
-- A React-based database management dashboard.
-- Automatic MemTable flushing.
+- A Skip List-based MemTable.
+- Write-Ahead Logging and recovery.
+- Immutable SSTable storage.
+- Bloom Filter-based lookup optimization.
+- Sequence-number-based record versioning.
+- Tombstone-based deletion.
+- Ordered range scanning.
+- SSTable compaction.
 - Manifest-based checkpoint recovery.
+- Automatic MemTable flushing.
+- A C++ HTTP REST API.
+- A React and TypeScript dashboard.
+- A standalone performance benchmark.
 
 ---
 
@@ -71,7 +80,7 @@ The project provides:
 - SSTable V3 format with sequence numbers.
 - Manifest-based checkpoint tracking.
 - Checkpoint-aware WAL recovery.
-- Truncation of incomplete WAL tails during replay.
+- Handling of incomplete WAL tails during replay.
 - Persistence across server restarts.
 
 ### Backend API
@@ -94,6 +103,16 @@ The project provides:
 - MemTable and SSTable statistics.
 - Automatic statistics refresh.
 - Success and error notifications.
+
+### Testing and Benchmarking
+
+- GoogleTest-based storage-engine test suite.
+- WAL recovery regression tests.
+- Compaction regression tests.
+- HTTP API integration verification.
+- Standalone benchmark executable.
+- PUT, GET, range scan, and compaction measurements.
+- CSV benchmark output.
 
 ---
 
@@ -139,7 +158,7 @@ StrataDB follows an LSM-Tree-inspired architecture.
        Checkpoint Metadata
 ```
 
-### Write path
+### Write Path
 
 1. A client sends a write request through the REST API.
 2. The database assigns a sequence number.
@@ -147,10 +166,10 @@ StrataDB follows an LSM-Tree-inspired architecture.
 4. The record is inserted into the MemTable.
 5. The engine checks the configured MemTable threshold.
 6. If the threshold is reached, the MemTable is flushed into an SSTable.
-7. The checkpoint metadata is updated.
+7. Checkpoint metadata is updated.
 8. The MemTable and WAL are cleared after successful checkpoint progression.
 
-### Read path
+### Read Path
 
 1. The database checks the MemTable.
 2. If the key is not found there, it searches the SSTables.
@@ -158,6 +177,14 @@ StrataDB follows an LSM-Tree-inspired architecture.
 4. Candidate records are compared using sequence numbers.
 5. The newest record determines the result.
 6. A newest-version tombstone means the key is deleted.
+
+### Compaction Path
+
+1. The SSTable Manager selects SSTables for compaction.
+2. Their records are merged.
+3. Sequence numbers are used to resolve different versions of the same key.
+4. The newest record for each key is retained.
+5. Tombstones are preserved by the current compaction implementation to prevent older values from reappearing.
 
 ---
 
@@ -287,10 +314,11 @@ StrataDB/
 │   │   ├── main.cpp
 │   │   └── server.cpp
 │   │
-│   └── tests/
-│       ├── auto_flush_manual_test.cpp
-│       ├── auto_flush_recovery_test.cpp
-│       └── [component GoogleTest files]
+│   ├── tests/
+│   │   └── GoogleTest component and regression tests
+│   │
+│   └── benchmarks/
+│       └── benchmark.cpp
 │
 ├── frontend/
 │   ├── public/
@@ -321,7 +349,7 @@ StrataDB/
 | C++17 | Language standard |
 | CMake | Build configuration |
 | Ninja | Build system |
-| GoogleTest | Unit testing |
+| GoogleTest | Unit and regression testing |
 | cpp-httplib | HTTP server |
 | React | Frontend dashboard |
 | TypeScript | Frontend application logic |
@@ -343,14 +371,14 @@ StrataDB/
 
 The development environment used for this project is Windows with MSYS2 UCRT64 GCC, CMake, and Ninja.
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/Amrittt22/StrataDB.git
 cd StrataDB
 ```
 
-### 2. Configure the C++ backend
+### 2. Configure the C++ Backend
 
 For Windows PowerShell with MSYS2 UCRT64:
 
@@ -361,13 +389,13 @@ cmake -S . -B build -G Ninja `
   -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe"
 ```
 
-### 3. Build the project
+### 3. Build the Project
 
 ```powershell
 cmake --build build
 ```
 
-### 4. Run the REST server
+### 4. Run the REST Server
 
 ```powershell
 .\build\stratadb_server.exe
@@ -375,10 +403,12 @@ cmake --build build
 
 The server uses:
 
-- Default host: `127.0.0.1`
-- Default port: `8080`
-- Default database directory: `./stratadb_data`
-- Default MemTable flush threshold: `1000`
+| Setting | Default |
+|---|---|
+| Host | `127.0.0.1` |
+| Port | `8080` |
+| Database directory | `./stratadb_data` |
+| MemTable flush threshold | `1000` |
 
 You can provide a custom database directory, port, and flush threshold:
 
@@ -388,7 +418,7 @@ You can provide a custom database directory, port, and flush threshold:
 
 The third argument controls the automatic MemTable flush threshold.
 
-### 5. Run the React frontend
+### 5. Run the React Frontend
 
 Open another terminal:
 
@@ -432,7 +462,7 @@ Keep the C++ backend and React development server running simultaneously.
 | GET | `/scan?start=a&end=z` | Scan a key range |
 | GET | `/stats` | Retrieve storage statistics |
 
-### API examples
+### API Examples
 
 **Health check**
 
@@ -528,7 +558,7 @@ The backend base URL can be configured through `VITE_API_BASE_URL`.
 
 ## Testing
 
-StrataDB includes GoogleTest-based tests covering its core storage-engine components.
+StrataDB includes a GoogleTest-based test suite covering its core storage-engine components and regression scenarios.
 
 The test suite includes coverage for:
 
@@ -544,8 +574,10 @@ The test suite includes coverage for:
 - Sequence-aware recovery.
 - Checkpoint handling.
 - Automatic flushing.
+- WAL truncated-payload handling.
+- Compaction regression scenarios.
 
-### Run the complete test suite
+### Run the Complete Test Suite
 
 From the project root:
 
@@ -553,11 +585,9 @@ From the project root:
 ctest --test-dir build --output-on-failure
 ```
 
-The Day 4 development checkpoint completed with:
+**Latest verified development result: 109 out of 109 tests passing.**
 
-**106 out of 106 tests passing.**
-
-### Automatic flush tests
+### Automatic Flush Tests
 
 The project also includes standalone tests for automatic flushing and recovery:
 
@@ -571,28 +601,101 @@ The project also includes standalone tests for automatic flushing and recovery:
 
 These tests exercise threshold-triggered flushing and persistence after reopening the database.
 
-### REST API verification
+### REST API Integration Verification
 
-The HTTP API was manually tested using PowerShell.
+The HTTP API has been tested for:
 
-Example:
-
-```powershell
-$base = "http://localhost:8080"
-
-Invoke-RestMethod "$base/health"
-
-Invoke-RestMethod -Method PUT `
-  -Uri "$base/kv/name" `
-  -Body "Amritanshu"
-
-Invoke-RestMethod "$base/kv/name"
-
-Invoke-RestMethod -Method DELETE `
-  -Uri "$base/kv/name"
-```
+- Health checks.
+- PUT and update operations.
+- GET operations.
+- Range scans.
+- Statistics.
+- DELETE operations.
+- Missing-key responses.
+- Automatic flushing through the configured threshold.
 
 Restart persistence was also verified by writing a key, stopping the server, restarting it, and retrieving the stored value.
+
+---
+
+## Benchmarking
+
+StrataDB includes a standalone benchmark executable that measures the performance of selected storage-engine operations.
+
+The benchmark covers:
+
+| Operation | Description |
+|---|---|
+| PUT | Measures individual writes to the MemTable |
+| GET | Measures reads from a database prepared with flushed SSTable data |
+| Range Scan | Measures ordered range scans |
+| Compaction | Measures SSTable compaction |
+
+### Build the Benchmark
+
+The benchmark is included in the CMake build:
+
+```powershell
+cmake --build build
+```
+
+### Run the Benchmark
+
+Run with the default dataset size of 1,000 records:
+
+```powershell
+.\build\stratadb_benchmark.exe
+```
+
+Specify a dataset size:
+
+```powershell
+.\build\stratadb_benchmark.exe 5000
+```
+
+Specify both dataset size and output CSV path:
+
+```powershell
+.\build\stratadb_benchmark.exe 1000 .\benchmark-results.csv
+```
+
+By default, results are written to:
+
+```text
+benchmarks/results/stratadb_benchmark.csv
+```
+
+The generated CSV includes:
+
+- Dataset size.
+- Number of operations.
+- Total execution time.
+- Throughput.
+- Average latency.
+- p50 latency.
+- p95 latency.
+- p99 latency.
+- Returned record count where applicable.
+
+### Initial Local Benchmark Results
+
+The following measurements were collected during local development.
+
+| Operation | 500 records | 1,000 records | 5,000 records |
+|---|---:|---:|---:|
+| PUT throughput (ops/sec) | 2,011.74 | 1,230.51 | 346.69 |
+| GET throughput (ops/sec) | 399,265.35 | 1,120,071.69 | 448,153.16 |
+| Range scan time (ms, 3 scans) | 5.936 | 9.851 | 27.221 |
+| Compaction time (ms) | 16.632 | 23.436 | 50.198 |
+| Verified records after compaction | 500 | 1,000 | 5,000 |
+
+**Benchmark notes:**
+
+- These are initial local measurements, not universal performance guarantees.
+- GET measurements use a database prepared with flushed SSTable data and may benefit from operating-system caching.
+- Range scans use three repetitions per dataset; percentile values from such a small sample should not be treated as statistically representative.
+- Results depend on hardware, compiler settings, operating system, dataset size, and runtime conditions.
+- These benchmarks are intended to provide a repeatable baseline for future optimization.
 
 ---
 
@@ -600,7 +703,7 @@ Restart persistence was also verified by writing a key, stopping the server, res
 
 StrataDB is an educational and portfolio-oriented storage-engine project. It demonstrates important database concepts, but it should not yet be treated as a production database.
 
-Current engineering limitations and areas requiring further validation include:
+Current engineering limitations include:
 
 - Stronger operating-system-level durability guarantees.
 - More extensive crash and recovery testing.
@@ -610,25 +713,11 @@ Current engineering limitations and areas requiring further validation include:
 - More comprehensive REST API error handling.
 - Authentication and TLS.
 - Restricted CORS before public exposure.
-- Performance benchmarks against established storage engines.
+- Broader benchmark comparisons against established storage engines.
 
 The HTTP server currently serializes requests using a mutex, and its development CORS configuration should not be considered production-ready.
 
-These limitations are documented as future engineering work, not as implemented capabilities.
-
----
-
-## Future Improvements
-
-Potential next development milestones include:
-
-- Stronger crash consistency and durability.
-- More robust manifest and SSTable validation.
-- Improved compaction recovery.
-- Concurrent request and stress testing.
-- Storage-engine performance benchmarks.
-- Production-oriented API security.
-- Deployment and operational monitoring.
+In particular, the project does not currently claim a complete operating-system-level durability strategy using explicit `fsync` or Windows `FlushFileBuffers` calls.
 
 ---
 
