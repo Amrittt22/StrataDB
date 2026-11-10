@@ -1,3 +1,4 @@
+
 #include "../include/Database.h"
 
 #include "httplib.h"
@@ -5,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <sstream>
@@ -18,13 +20,10 @@ std::mutex databaseMutex;
 
 // Escape strings for valid JSON output.
 std::string jsonEscape(const std::string& input) {
-
     std::ostringstream output;
 
     for (unsigned char c : input) {
-
         switch (c) {
-
             case '"':
                 output << "\\\"";
                 break;
@@ -92,7 +91,7 @@ void sendError(
         status,
         "{\"success\":false,\"error\":\"" +
             jsonEscape(message) +
-        "\"}"
+            "\"}"
     );
 }
 
@@ -100,23 +99,25 @@ int main(int argc, char* argv[]) {
 
     std::string dataDirectory = "./stratadb_data";
     int port = 8080;
+    std::size_t flushThreshold = 1000;
 
+    // Argument 1: Database directory
     if (argc >= 2) {
         dataDirectory = argv[1];
     }
 
+    // Argument 2: Server port
     if (argc >= 3) {
         try {
             std::size_t parsedLength = 0;
             port = std::stoi(argv[2], &parsedLength);
 
             if (parsedLength != std::string(argv[2]).size()) {
-                throw std::invalid_argument("port contains non-numeric characters");
+                throw std::invalid_argument(
+                    "Port contains non-numeric characters"
+                );
             }
-        } catch (const std::invalid_argument&) {
-            std::cerr << "Invalid port\n";
-            return 1;
-        } catch (const std::out_of_range&) {
+        } catch (const std::exception&) {
             std::cerr << "Invalid port\n";
             return 1;
         }
@@ -127,7 +128,38 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    Database database(dataDirectory, 1000);
+    // Argument 3: MemTable flush threshold
+    if (argc >= 4) {
+        try {
+            std::size_t parsedLength = 0;
+
+            unsigned long long parsedThreshold =
+                std::stoull(argv[3], &parsedLength);
+
+            if (
+                parsedLength != std::string(argv[3]).size() ||
+                parsedThreshold == 0 ||
+                parsedThreshold >
+                    std::numeric_limits<std::size_t>::max()
+            ) {
+                throw std::invalid_argument(
+                    "Invalid flush threshold"
+                );
+            }
+
+            flushThreshold =
+                static_cast<std::size_t>(parsedThreshold);
+
+        } catch (const std::exception&) {
+            std::cerr
+                << "Invalid flush threshold. "
+                << "It must be a positive integer.\n";
+            return 1;
+        }
+    }
+
+    // Initialize database with the configured flush threshold.
+    Database database(dataDirectory, flushThreshold);
 
     if (!database.open()) {
         std::cerr << "Failed to open StrataDB\n";
@@ -365,11 +397,16 @@ int main(int argc, char* argv[]) {
         }
     );
 
+    // ------------------------------------------------
+    // SERVER STARTUP
+    // ------------------------------------------------
+
     std::cout << "=================================\n";
     std::cout << "       StrataDB HTTP Server\n";
     std::cout << "=================================\n";
     std::cout << "Data directory: " << dataDirectory << '\n';
     std::cout << "Port: " << port << '\n';
+    std::cout << "Flush threshold: " << flushThreshold << '\n';
     std::cout << "Health: http://127.0.0.1:"
               << port << "/health\n";
     std::cout << "=================================\n";

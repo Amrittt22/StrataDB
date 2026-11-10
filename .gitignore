@@ -69,3 +69,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+auto_flush_test_data/
+auto_flush_api_data/
+auto_flush_recovery_test_data/
+auto_flush_manual_test_data/

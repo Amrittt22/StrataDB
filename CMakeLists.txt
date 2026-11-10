@@ -72,6 +72,8 @@ add_executable(stratadb_server
     engine/src/server.cpp
 )
 
+
+
 target_link_libraries(stratadb_server
     PRIVATE
     stratadb_engine
@@ -106,6 +108,30 @@ target_link_libraries(stratadb_tests
     PRIVATE
         stratadb_engine
         GTest::gtest_main
+)
+
+# -----------------------------------------
+# Manual Automatic Flush Test
+# -----------------------------------------
+
+add_executable(auto_flush_manual_test
+    engine/tests/auto_flush_manual_test.cpp
+)
+
+target_link_libraries(auto_flush_manual_test
+    PRIVATE stratadb_engine
+)
+
+# -----------------------------------------
+# Automatic Flush Recovery Test
+# -----------------------------------------
+
+add_executable(auto_flush_recovery_test
+    engine/tests/auto_flush_recovery_test.cpp
+)
+
+target_link_libraries(auto_flush_recovery_test
+    PRIVATE stratadb_engine
 )
 
 include(GoogleTest)
