@@ -407,12 +407,12 @@ int main(int argc, char* argv[]) {
     std::cout << "Data directory: " << dataDirectory << '\n';
     std::cout << "Port: " << port << '\n';
     std::cout << "Flush threshold: " << flushThreshold << '\n';
-    std::cout << "Health: http://0.0.0.0:"
+    std::cout << "Health: http://127.0.0.1:"
               << port << "/health\n";
     std::cout << "=================================\n";
 
-    // Bind to all available network interfaces.
-    if (!server.listen("0.0.0.0", port)) {
+    // Bind to localhost for development.
+    if (!server.listen("127.0.0.1", port)) {
         std::cerr << "Failed to start HTTP server\n";
         return 1;
     }
