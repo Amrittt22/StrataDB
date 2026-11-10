@@ -1,12 +1,12 @@
 # StrataDB
 
-**A C++ LSM-Tree-Based Key-Value Storage Engine**
+### A C++ LSM-Tree-Based Key-Value Storage Engine
 
-StrataDB is a lightweight key-value storage engine built from scratch in C++. It is designed to explore the internal workings of modern storage systems, including Log-Structured Merge Trees (LSM-Trees), Write-Ahead Logging (WAL), MemTables, SSTables, Bloom Filters, compaction, checkpoint recovery, and REST API integration.
+StrataDB is a lightweight persistent key-value storage engine built from scratch in C++. It explores the internal architecture of modern storage systems through concepts such as Log-Structured Merge Trees (LSM-Trees), Write-Ahead Logging (WAL), MemTables, SSTables, Bloom Filters, tombstones, compaction, and checkpoint-based recovery.
 
-The project combines low-level C++ storage-engine concepts with a backend interface that allows external applications to interact with the database.
+The project also includes a C++ HTTP REST API and a React dashboard, allowing users to interact with the storage engine through a graphical interface.
 
-> **Project status:** Core storage engine and C++ REST API implemented. React dashboard is the next development milestone.
+> **Project status:** Core storage engine, recovery mechanisms, automatic flushing, HTTP REST API, and React dashboard implemented and integration-tested.
 
 ---
 
@@ -17,40 +17,52 @@ The project combines low-level C++ storage-engine concepts with a backend interf
 - [Architecture](#architecture)
 - [Storage Engine Components](#storage-engine-components)
 - [Data Flow](#data-flow)
-- [REST API](#rest-api)
-- [Build and Run](#build-and-run)
-- [Testing](#testing)
-- [Current Progress](#current-progress)
-- [Roadmap](#roadmap)
+- [Project Structure](#project-structure)
 - [Technology Stack](#technology-stack)
+- [Build and Run](#build-and-run)
+- [REST API](#rest-api)
+- [React Dashboard](#react-dashboard)
+- [Testing](#testing)
+- [Current Limitations](#current-limitations)
+- [Future Improvements](#future-improvements)
+- [Author](#author)
 
 ---
 
 ## Overview
 
-StrataDB is a persistent key-value database that uses an LSM-Tree-inspired architecture.
+StrataDB uses an LSM-Tree-inspired architecture to store key-value records persistently.
 
-Instead of modifying disk-based data structures for every write, StrataDB first records writes in a Write-Ahead Log and stores them in an in-memory MemTable. When the MemTable reaches its configured threshold, its contents are flushed into an immutable Sorted String Table (SSTable).
+Instead of modifying disk-based data structures for every write, StrataDB first records modifications in a Write-Ahead Log and stores them in an in-memory MemTable.
 
-The engine uses sequence numbers to identify the newest version of a key, allowing it to resolve updates and deletions across multiple storage files.
+When the MemTable reaches its configured threshold, its contents are flushed into an immutable Sorted String Table (SSTable).
 
-StrataDB also provides a C++ HTTP REST API, making it possible to interact with the engine through external applications.
+Sequence numbers allow the engine to distinguish between different versions of a key. Tombstones represent deletions and prevent older versions from incorrectly reappearing.
+
+The project provides:
+
+- A persistent C++ key-value storage engine.
+- An HTTP REST API implemented in C++.
+- A React-based database management dashboard.
+- Automatic MemTable flushing.
+- Manifest-based checkpoint recovery.
+
+---
 
 ## Features
 
 ### Storage Engine
 
 - Persistent key-value storage.
-- In-memory MemTable.
-- Skip List-based data organization.
+- Skip List-based MemTable.
 - Write-Ahead Logging (WAL).
 - Immutable SSTable files.
 - Bloom Filter-based lookup optimization.
 - Sequence-number-based record versioning.
 - Tombstone-based deletion.
-- Range scanning.
+- Ordered range scanning.
 - SSTable compaction.
-- Automatic MemTable flushing.
+- Automatic and manual MemTable flushing.
 
 ### Recovery and Persistence
 
@@ -59,66 +71,103 @@ StrataDB also provides a C++ HTTP REST API, making it possible to interact with 
 - SSTable V3 format with sequence numbers.
 - Manifest-based checkpoint tracking.
 - Checkpoint-aware WAL recovery.
-- MemTable clearing after successful checkpoint progression.
-- Data persistence across server restarts.
+- Truncation of incomplete WAL tails during replay.
+- Persistence across server restarts.
 
 ### Backend API
 
-- HTTP REST API implemented in C++.
+- C++ HTTP REST server using cpp-httplib.
 - Health-check endpoint.
 - PUT, GET, and DELETE operations.
 - Range scan endpoint.
 - Storage statistics endpoint.
-- Request serialization through a mutex in the HTTP server.
+- Configurable automatic flush threshold.
+- Mutex-based request serialization.
+
+### Frontend Dashboard
+
+- React and TypeScript interface.
+- Backend connection status.
+- Key-value insertion and retrieval.
+- Key updates and deletion.
+- Range scanning interface.
+- MemTable and SSTable statistics.
+- Automatic statistics refresh.
+- Success and error notifications.
 
 ---
 
 ## Architecture
 
-StrataDB follows an LSM-Tree-inspired storage architecture.
+StrataDB follows an LSM-Tree-inspired architecture.
 
 ```text
-                 Client Application
-                         |
-                         v
-                  HTTP REST API
-                         |
-                         v
-                    Database
-                         |
-              +----------+----------+
-              |                     |
-              v                     v
-          MemTable                 WAL
-          Skip List          Write-Ahead Log
+                  Client Application
+                          |
+                          v
+                   React Dashboard
+                          |
+                          v
+                    HTTP REST API
+                          |
+                          v
+                       Database
+                          |
+              +-----------+-----------+
+              |                       |
+              v                       v
+           MemTable                  WAL
+           Skip List           Write-Ahead Log
               |
               | Automatic / Manual Flush
               v
           SSTable Files
-          Immutable Storage
+        Immutable Storage
               |
               v
-          SSTable Manager
+         SSTable Manager
               |
-              +----------------+
-              |                |
-              v                v
-          Bloom Filters     Compaction
+       +------+------+
+       |             |
+       v             v
+   Bloom Filters  Compaction
               |
               v
-        Persistent Storage
+       Persistent Storage
 
-          Manifest
-     Checkpoint Metadata
+            Manifest
+       Checkpoint Metadata
 ```
+
+### Write path
+
+1. A client sends a write request through the REST API.
+2. The database assigns a sequence number.
+3. The operation is appended to the WAL.
+4. The record is inserted into the MemTable.
+5. The engine checks the configured MemTable threshold.
+6. If the threshold is reached, the MemTable is flushed into an SSTable.
+7. The checkpoint metadata is updated.
+8. The MemTable and WAL are cleared after successful checkpoint progression.
+
+### Read path
+
+1. The database checks the MemTable.
+2. If the key is not found there, it searches the SSTables.
+3. Bloom Filters help eliminate unnecessary SSTable lookups.
+4. Candidate records are compared using sequence numbers.
+5. The newest record determines the result.
+6. A newest-version tombstone means the key is deleted.
+
+---
 
 ## Storage Engine Components
 
 ### 1. MemTable
 
-The MemTable is the in-memory component responsible for holding recent writes.
+The MemTable is the in-memory component responsible for holding recent database modifications.
 
-StrataDB uses a Skip List to organize entries and support efficient lookup and ordered traversal.
+StrataDB uses a Skip List to maintain entries in sorted order.
 
 Responsibilities:
 
@@ -132,28 +181,37 @@ Responsibilities:
 
 The WAL records database modifications before they are applied to the in-memory data structure.
 
-Each WAL record contains:
+Each WAL V2 record contains:
 
-- Operation type.
-- Sequence number.
-- Key length.
-- Value length.
-- Key.
-- Value.
+| Field | Description |
+|---|---|
+| Operation | Put or delete |
+| Sequence number | Version identifier |
+| Key length | Length of the key |
+| Value length | Length of the value |
+| Key | Key bytes |
+| Value | Value bytes |
 
-The WAL supports replay during recovery and checkpoint-aware skipping of already checkpointed records.
+The WAL supports replay during recovery and skips records already covered by the manifest checkpoint.
 
 ### 3. SSTable
 
 An SSTable is an immutable, disk-based file containing sorted database entries.
 
-StrataDB currently uses the V3 SSTable format, which stores sequence numbers alongside keys, values, and tombstone information.
+StrataDB currently uses the V3 SSTable format, identified by the `STRATAS3` magic value.
 
-This allows the engine to determine which version of a key is the newest across multiple SSTables.
+Entries contain:
+
+- Key.
+- Value.
+- Tombstone information.
+- Sequence number.
+
+This allows the engine to resolve different versions of a key across multiple SSTables.
 
 ### 4. Bloom Filter
 
-Bloom Filters help reduce unnecessary SSTable lookups.
+Bloom Filters reduce unnecessary SSTable lookups.
 
 They provide probabilistic membership checks:
 
@@ -176,7 +234,9 @@ Responsibilities:
 
 Compaction merges SSTables into a consolidated representation.
 
-StrataDB uses sequence numbers to select the newest version of each key. Tombstones are retained during the current compaction process so that deleted keys do not incorrectly reappear from older tables.
+StrataDB uses sequence numbers to select the newest record for each key.
+
+Tombstones are retained during the current compaction process to prevent deleted keys from reappearing from older tables.
 
 ### 7. Manifest and Checkpoint Recovery
 
@@ -184,7 +244,7 @@ The Manifest stores the database checkpoint sequence number.
 
 During recovery:
 
-1. The database loads the checkpoint metadata.
+1. The database loads checkpoint metadata.
 2. SSTable storage is initialized.
 3. WAL records are examined.
 4. Records at or below the checkpoint are skipped.
@@ -194,91 +254,174 @@ This prevents already checkpointed operations from being replayed as new writes.
 
 ---
 
-## Data Flow
-
-### Write Operation
+## Project Structure
 
 ```text
-Client
-  |
-  v
-REST API
-  |
-  v
-Database::put()
-  |
-  v
-Append record to WAL
-  |
-  v
-Insert into MemTable
-  |
-  v
-Check MemTable threshold
-  |
-  +---- Threshold reached? ----+
-  |                            |
-  No                           Yes
-  |                            |
-  v                            v
-Return success            Flush to SSTable
-                               |
-                               v
-                         Save checkpoint
-                               |
-                               v
-                         Clear MemTable
+StrataDB/
+│
+├── engine/
+│   ├── include/
+│   │   ├── BloomFilter.h
+│   │   ├── Database.h
+│   │   ├── Logger.h
+│   │   ├── Manifest.h
+│   │   ├── MemTable.h
+│   │   ├── Record.h
+│   │   ├── SkipList.h
+│   │   ├── SSTable.h
+│   │   ├── SSTableManager.h
+│   │   ├── Stats.h
+│   │   └── WAL.h
+│   │
+│   ├── src/
+│   │   ├── BloomFilter.cpp
+│   │   ├── Database.cpp
+│   │   ├── Logger.cpp
+│   │   ├── Manifest.cpp
+│   │   ├── MemTable.cpp
+│   │   ├── SkipList.cpp
+│   │   ├── SSTable.cpp
+│   │   ├── SSTableManager.cpp
+│   │   ├── Stats.cpp
+│   │   ├── WAL.cpp
+│   │   ├── main.cpp
+│   │   └── server.cpp
+│   │
+│   └── tests/
+│       ├── auto_flush_manual_test.cpp
+│       ├── auto_flush_recovery_test.cpp
+│       └── [component GoogleTest files]
+│
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── stratadb.ts
+│   │   ├── assets/
+│   │   ├── App.tsx
+│   │   ├── App.css
+│   │   ├── index.css
+│   │   └── main.tsx
+│   ├── .env.example
+│   ├── package.json
+│   └── vite.config.ts
+│
+├── CMakeLists.txt
+├── .gitignore
+└── README.md
 ```
 
-### Read Operation
+---
+
+## Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| C++ | Storage engine and HTTP backend |
+| C++17 | Language standard |
+| CMake | Build configuration |
+| Ninja | Build system |
+| GoogleTest | Unit testing |
+| cpp-httplib | HTTP server |
+| React | Frontend dashboard |
+| TypeScript | Frontend application logic |
+| Vite | Frontend development and build tooling |
+| CSS | Dashboard styling |
+
+---
+
+## Build and Run
+
+### Prerequisites
+
+- C++ compiler with C++17 support.
+- CMake.
+- Ninja.
+- Git.
+- Node.js and npm.
+- Internet access during initial dependency configuration if required.
+
+The development environment used for this project is Windows with MSYS2 UCRT64 GCC, CMake, and Ninja.
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Amrittt22/StrataDB.git
+cd StrataDB
+```
+
+### 2. Configure the C++ backend
+
+For Windows PowerShell with MSYS2 UCRT64:
+
+```powershell
+$env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
+
+cmake -S . -B build -G Ninja `
+  -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe"
+```
+
+### 3. Build the project
+
+```powershell
+cmake --build build
+```
+
+### 4. Run the REST server
+
+```powershell
+.\build\stratadb_server.exe
+```
+
+The server uses:
+
+- Default host: `127.0.0.1`
+- Default port: `8080`
+- Default database directory: `./stratadb_data`
+- Default MemTable flush threshold: `1000`
+
+You can provide a custom database directory, port, and flush threshold:
+
+```powershell
+.\build\stratadb_server.exe .\my_database 8080 1000
+```
+
+The third argument controls the automatic MemTable flush threshold.
+
+### 5. Run the React frontend
+
+Open another terminal:
+
+```powershell
+cd frontend
+npm install
+```
+
+Create a local `.env` file using `.env.example` as a reference:
+
+```env
+VITE_API_BASE_URL=http://localhost:8080
+```
+
+Start the frontend:
+
+```powershell
+npm run dev
+```
+
+Open the Vite URL displayed in the terminal, normally:
 
 ```text
-Client
-  |
-  v
-REST API
-  |
-  v
-Database::get()
-  |
-  v
-Check MemTable
-  |
-  +---- Found? ----+
-  |                |
- Yes               No
-  |                |
-  v                v
-Return value   Search SSTables
-                    |
-                    v
-              Bloom Filter
-                    |
-                    v
-              Read candidate
-                    |
-                    v
-          Resolve newest sequence
-                    |
-                    v
-              Return result
+http://localhost:5173
 ```
 
-### Delete Operation
-
-StrataDB represents deletions using tombstones.
-
-A delete operation records a tombstone with a sequence number. The tombstone ensures that older versions of the key are not returned during reads or recovery.
+Keep the C++ backend and React development server running simultaneously.
 
 ---
 
 ## REST API
 
-StrataDB exposes an HTTP interface through its C++ server.
-
-**Default server address:**
-
-`http://localhost:8080`
+**Default server address:** `http://localhost:8080`
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -289,7 +432,7 @@ StrataDB exposes an HTTP interface through its C++ server.
 | GET | `/scan?start=a&end=z` | Scan a key range |
 | GET | `/stats` | Retrieve storage statistics |
 
-### API Examples
+### API examples
 
 **Health check**
 
@@ -339,65 +482,55 @@ GET /scan?start=a&end=z
 GET /stats
 ```
 
+Example statistics response:
+
+```json
+{
+  "success": true,
+  "memtable_size": 3,
+  "sstable_count": 0,
+  "auto_flush_success": true
+}
+```
+
+The statistics endpoint exposes the current MemTable size, SSTable count, and last automatic flush status.
+
 ---
 
-## Build and Run
+## React Dashboard
 
-### Prerequisites
+StrataDB includes a React and TypeScript dashboard connected to the C++ backend through the REST API.
 
-- C++ compiler with C++17 support.
-- CMake.
-- Ninja build system.
-- Git.
-- Internet access during initial configuration if the HTTP library needs to be downloaded.
+The dashboard provides:
 
-The current development environment uses MSYS2 UCRT64 GCC, CMake, and Ninja on Windows.
+- Backend connection status.
+- Database health information.
+- Key-value insertion.
+- Key retrieval.
+- Key updates.
+- Key deletion.
+- Range scanning.
+- MemTable size monitoring.
+- SSTable count monitoring.
+- Automatic flush status.
+- Periodic statistics refresh.
+- Success and error notifications.
 
-### 1. Clone the repository
+The frontend communicates with the backend through the API client in:
 
-```bash
-git clone https://github.com/Amrittt22/StrataDB.git
-cd StrataDB
+```text
+frontend/src/api/stratadb.ts
 ```
 
-### 2. Configure the project
-
-For the current Windows MSYS2 UCRT64 environment, open PowerShell:
-
-```powershell
-$env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
-
-cmake -S . -B build -G Ninja `
-  -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe"
-```
-
-### 3. Build
-
-```powershell
-cmake --build build
-```
-
-### 4. Run the REST server
-
-```powershell
-.\build\stratadb_server.exe
-```
-
-The server starts on port `8080` and uses `./stratadb_data` as its default database directory.
-
-You can also specify a custom data directory and port:
-
-```powershell
-.\build\stratadb_server.exe .\my_database 8080
-```
+The backend base URL can be configured through `VITE_API_BASE_URL`.
 
 ---
 
 ## Testing
 
-StrataDB includes GoogleTest-based tests for its storage-engine components.
+StrataDB includes GoogleTest-based tests covering its core storage-engine components.
 
-The test suite covers components including:
+The test suite includes coverage for:
 
 - Bloom Filter.
 - Database operations.
@@ -408,12 +541,39 @@ The test suite covers components including:
 - SSTable Manager.
 - Statistics.
 - Write-Ahead Log.
+- Sequence-aware recovery.
+- Checkpoint handling.
+- Automatic flushing.
 
-The development process has also included tests for sequence-aware recovery, checkpoint handling, automatic flushing, and persistence across restarts.
+### Run the complete test suite
 
-### REST API Verification
+From the project root:
 
-The HTTP API has been manually tested using PowerShell.
+```powershell
+ctest --test-dir build --output-on-failure
+```
+
+The Day 4 development checkpoint completed with:
+
+**106 out of 106 tests passing.**
+
+### Automatic flush tests
+
+The project also includes standalone tests for automatic flushing and recovery:
+
+```powershell
+.\build\auto_flush_manual_test.exe
+```
+
+```powershell
+.\build\auto_flush_recovery_test.exe
+```
+
+These tests exercise threshold-triggered flushing and persistence after reopening the database.
+
+### REST API verification
+
+The HTTP API was manually tested using PowerShell.
 
 Example:
 
@@ -432,101 +592,15 @@ Invoke-RestMethod -Method DELETE `
   -Uri "$base/kv/name"
 ```
 
-Restart persistence has also been tested by writing a key, stopping the server, restarting it, and retrieving the stored value.
+Restart persistence was also verified by writing a key, stopping the server, restarting it, and retrieving the stored value.
 
 ---
 
-## Current Progress
+## Current Limitations
 
-<details>
-<summary><strong>Completed — Core Storage Engine</strong></summary>
+StrataDB is an educational and portfolio-oriented storage-engine project. It demonstrates important database concepts, but it should not yet be treated as a production database.
 
-- LSM-Tree-inspired storage architecture.
-- Skip List-based MemTable.
-- Write-Ahead Logging.
-- SSTable storage.
-- Bloom Filter integration.
-- Basic database operations.
-- Range scanning.
-- SSTable compaction.
-
-</details>
-
-<details>
-<summary><strong>Completed — Recovery and Optimization</strong></summary>
-
-- Sequence-aware WAL.
-- SSTable V3 with sequence numbers.
-- Sequence-based version resolution.
-- Tombstone handling.
-- Manifest and checkpoint tracking.
-- Checkpoint-aware recovery.
-- Automatic MemTable flushing.
-
-</details>
-
-<details>
-<summary><strong>Completed — HTTP Backend</strong></summary>
-
-- C++ REST API server.
-- Health endpoint.
-- Key-value CRUD endpoints.
-- Range scan endpoint.
-- Statistics endpoint.
-- Manual API testing.
-- Restart persistence verification.
-
-</details>
-
-<details>
-<summary><strong>Upcoming — React Dashboard</strong></summary>
-
-- React frontend.
-- Backend API integration.
-- Database health indicator.
-- Key-value editor.
-- Range scanner interface.
-- Storage statistics dashboard.
-- End-to-end frontend/backend testing.
-
-</details>
-
----
-
-## Roadmap
-
-| Milestone | Work | Status |
-|---|---|---|
-| Day 1–2 | Core storage engine and LSM components | Completed |
-| Day 3 | Sequence-aware storage, recovery, auto-flush, REST API | Completed |
-| Day 4 | React dashboard and API integration | Upcoming |
-| Day 5+ | Integration testing and reliability improvements | Planned |
-| Final | Documentation, deployment, and project polish | Planned |
-
-The roadmap is subject to change as the implementation evolves.
-
----
-
-## Technology Stack
-
-| Technology | Purpose |
-|---|---|
-| C++ | Storage engine and HTTP backend |
-| C++17 | Language standard |
-| CMake | Build configuration |
-| Ninja | Build system |
-| GoogleTest | Unit testing |
-| cpp-httplib | HTTP server |
-| React | Planned frontend |
-| JavaScript / TypeScript | Planned frontend development |
-
----
-
-## Engineering Notes and Current Limitations
-
-StrataDB is an educational and portfolio-oriented storage-engine project. Its current implementation demonstrates important database concepts, but it should not yet be treated as a production database.
-
-Areas for further engineering work include:
+Current engineering limitations and areas requiring further validation include:
 
 - Stronger operating-system-level durability guarantees.
 - More extensive crash and recovery testing.
@@ -534,10 +608,27 @@ Areas for further engineering work include:
 - Manifest and SSTable consistency validation.
 - Concurrency control and stress testing.
 - More comprehensive REST API error handling.
-- Authentication, TLS, and restricted CORS before exposing the API publicly.
-- Performance benchmarks against existing storage engines.
+- Authentication and TLS.
+- Restricted CORS before public exposure.
+- Performance benchmarks against established storage engines.
 
-These are intentional future engineering goals rather than claims of functionality already implemented.
+The HTTP server currently serializes requests using a mutex, and its development CORS configuration should not be considered production-ready.
+
+These limitations are documented as future engineering work, not as implemented capabilities.
+
+---
+
+## Future Improvements
+
+Potential next development milestones include:
+
+- Stronger crash consistency and durability.
+- More robust manifest and SSTable validation.
+- Improved compaction recovery.
+- Concurrent request and stress testing.
+- Storage-engine performance benchmarks.
+- Production-oriented API security.
+- Deployment and operational monitoring.
 
 ---
 
@@ -546,7 +637,7 @@ These are intentional future engineering goals rather than claims of functionali
 **Amritanshu Singh**
 
 - GitHub: [Amrittt22](https://github.com/Amrittt22)
-- Project: [StrataDB](https://github.com/Amrittt22/StrataDB)
+- Project Repository: [StrataDB](https://github.com/Amrittt22/StrataDB)
 
 ---
 
