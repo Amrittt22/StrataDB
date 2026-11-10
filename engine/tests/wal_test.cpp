@@ -202,6 +202,27 @@ TEST(WALTest, RecoversFromTruncatedTail) {
     cleanWal();
 }
 
+TEST(WALTest, RecoversFromTruncatedPayload) {
+    cleanWal();
+
+    {
+        WAL wal(TEST_WAL);
+        ASSERT_TRUE(wal.appendPut("name", "StrataDB"));
+
+        const auto validSize = std::filesystem::file_size(TEST_WAL);
+        ASSERT_GT(validSize, 2u);
+        std::filesystem::resize_file(TEST_WAL, validSize - 2);
+
+        MemTable table(TEST_MEMTABLE_WAL);
+
+        EXPECT_TRUE(wal.replay(table));
+        EXPECT_EQ(std::filesystem::file_size(TEST_WAL), 0u);
+        EXPECT_TRUE(table.empty());
+    }
+
+    cleanWal();
+}
+
 
 // 7. Missing WAL file should be treated as empty log
 TEST(WALTest, MissingWalFileIsEmptyLog) {

@@ -499,3 +499,52 @@ TEST_F(DatabaseTest, AutomaticFlushSurvivesRestart) {
         EXPECT_EQ(value, "two");
     }
 }
+
+TEST_F(DatabaseTest, CompactionPreservesTombstoneAfterRestart) {
+    {
+        Database db(testDirectory.string());
+
+        ASSERT_TRUE(db.open());
+        ASSERT_TRUE(db.put("key", "old"));
+        ASSERT_TRUE(db.flushMemTable());
+        ASSERT_TRUE(db.remove("key"));
+        ASSERT_TRUE(db.flushMemTable());
+        ASSERT_TRUE(db.compact());
+        EXPECT_EQ(db.sstableCount(), 1u);
+    }
+
+    Database recovered(testDirectory.string());
+
+    ASSERT_TRUE(recovered.open());
+
+    std::string value;
+    EXPECT_FALSE(recovered.get("key", value));
+}
+
+TEST_F(DatabaseTest, CompactionRetainsLatestValuesAcrossMultipleTables) {
+    Database db(testDirectory.string());
+
+    ASSERT_TRUE(db.open());
+
+    ASSERT_TRUE(db.put("a", "a1"));
+    ASSERT_TRUE(db.put("b", "b1"));
+    ASSERT_TRUE(db.flushMemTable());
+
+    ASSERT_TRUE(db.put("a", "a2"));
+    ASSERT_TRUE(db.put("c", "c1"));
+    ASSERT_TRUE(db.flushMemTable());
+
+    ASSERT_TRUE(db.put("a", "a3"));
+    ASSERT_TRUE(db.put("b", "b2"));
+    ASSERT_TRUE(db.flushMemTable());
+    ASSERT_TRUE(db.compact());
+
+    std::string value;
+    ASSERT_TRUE(db.get("a", value));
+    EXPECT_EQ(value, "a3");
+    ASSERT_TRUE(db.get("b", value));
+    EXPECT_EQ(value, "b2");
+    ASSERT_TRUE(db.get("c", value));
+    EXPECT_EQ(value, "c1");
+    EXPECT_EQ(db.sstableCount(), 1u);
+}

@@ -134,5 +134,17 @@ target_link_libraries(auto_flush_recovery_test
     PRIVATE stratadb_engine
 )
 
+# -----------------------------------------
+# Performance Benchmark
+# -----------------------------------------
+
+add_executable(stratadb_benchmark
+    engine/benchmarks/benchmark.cpp
+)
+
+target_link_libraries(stratadb_benchmark
+    PRIVATE stratadb_engine
+)
+
 include(GoogleTest)
 gtest_discover_tests(stratadb_tests)
