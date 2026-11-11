@@ -29,6 +29,11 @@ private:
     static SequenceNumber loadCheckpoint(
         const std::string& dataDirectory
     );
+    std::vector<std::pair<std::string, std::string>>
+    readVisibleRecords(
+        const std::string* startKey,
+        const std::string* endKey
+    ) const;
 
 public:
     explicit Database(
@@ -58,6 +63,8 @@ public:
         const std::string& startKey,
         const std::string& endKey
     ) const;
+
+    std::vector<std::pair<std::string, std::string>> list() const;
 
     bool compact();
 

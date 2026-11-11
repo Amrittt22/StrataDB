@@ -395,6 +395,46 @@ int main(int argc, char *argv[])
         });
 
     // ------------------------------------------------
+    // LIST
+    // GET /records
+    //
+    // Returns all currently visible records in key order.
+    // Pagination is intentionally handled by clients because
+    // this endpoint is a complete database snapshot.
+    // ------------------------------------------------
+
+    server.Get(
+        "/records",
+        [&](const httplib::Request &,
+            httplib::Response &response)
+        {
+            std::lock_guard<std::mutex> lock(databaseMutex);
+            const auto rows = database.list();
+            std::ostringstream json;
+
+            json << "{\"success\":true,\"count\":"
+                 << rows.size()
+                 << ",\"results\":[";
+
+            for (std::size_t i = 0; i < rows.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    json << ",";
+                }
+
+                json << "{\"key\":\""
+                     << jsonEscape(rows[i].first)
+                     << "\",\"value\":\""
+                     << jsonEscape(rows[i].second)
+                     << "\"}";
+            }
+
+            json << "]}";
+            sendJson(response, 200, json.str());
+        });
+
+    // ------------------------------------------------
     // STATS
     // GET /stats
     // ------------------------------------------------

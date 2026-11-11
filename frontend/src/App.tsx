@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { strataDB } from "./api/stratadb";
+import DataExplorer from "./DataExplorer";
 import "./index.css";
 
 interface KVEntry {
@@ -233,7 +234,7 @@ function App() {
           </a>
 
           <a href="#explorer" className="nav-item">
-            <span>⌕</span> Key Explorer
+            <span>⌕</span> Data Explorer
           </a>
 
           <a href="#range-scan" className="nav-item">
@@ -597,6 +598,8 @@ function App() {
           )}
 
         </section>
+
+        <DataExplorer />
 
         {/* Range Scan */}
         <section

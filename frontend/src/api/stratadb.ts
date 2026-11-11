@@ -7,6 +7,12 @@ export interface KVEntry {
   value: string;
 }
 
+export interface RecordsResponse {
+  success: boolean;
+  count: number;
+  results: KVEntry[];
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
@@ -55,6 +61,9 @@ export const strataDB = {
     request<any>(
       `/scan?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
     ),
+
+  records: () =>
+    request<RecordsResponse>("/records"),
 
   stats: () =>
     request<any>("/stats"),

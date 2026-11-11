@@ -200,13 +200,14 @@ bool Database::flushMemTable() {
 }
 
 std::vector<std::pair<std::string, std::string>>
-Database::scan(
-    const std::string& startKey,
-    const std::string& endKey
+Database::readVisibleRecords(
+    const std::string* startKey,
+    const std::string* endKey
 ) const {
     std::vector<std::pair<std::string, std::string>> result;
 
-    if (!opened || startKey > endKey) {
+    if (!opened ||
+        (startKey && endKey && *startKey > *endKey)) {
         return result;
     }
 
@@ -215,7 +216,8 @@ Database::scan(
         sstableManager.getEntriesNewestFirst();
 
     for (const auto& entry : diskEntries) {
-        if (entry.key < startKey || entry.key > endKey) {
+        if ((startKey && entry.key < *startKey) ||
+            (endKey && entry.key > *endKey)) {
             continue;
         }
 
@@ -228,7 +230,8 @@ Database::scan(
     }
 
     for (const auto& entry : memTable.getSnapshot()) {
-        if (entry.key >= startKey && entry.key <= endKey) {
+        if ((!startKey || entry.key >= *startKey) &&
+            (!endKey || entry.key <= *endKey)) {
             auto it = visible.find(entry.key);
 
             if (it == visible.end() ||
@@ -245,6 +248,19 @@ Database::scan(
     }
 
     return result;
+}
+
+std::vector<std::pair<std::string, std::string>>
+Database::scan(
+    const std::string& startKey,
+    const std::string& endKey
+) const {
+    return readVisibleRecords(&startKey, &endKey);
+}
+
+std::vector<std::pair<std::string, std::string>>
+Database::list() const {
+    return readVisibleRecords(nullptr, nullptr);
 }
 
 bool Database::compact() {

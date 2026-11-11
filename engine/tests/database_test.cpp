@@ -316,6 +316,29 @@ TEST_F(DatabaseTest, RangeScanHonorsMemTableTombstones) {
     EXPECT_EQ(rows[0].second, "visible");
 }
 
+TEST_F(DatabaseTest, ListMergesVisibleMemTableAndSSTableRecords) {
+    ASSERT_TRUE(createOlderSSTable("a", "old"));
+
+    Database db(testDirectory.string());
+
+    ASSERT_TRUE(db.open());
+    ASSERT_TRUE(db.put("a", "new"));
+    ASSERT_TRUE(db.put("c", "visible"));
+    ASSERT_FALSE(db.remove("b"));
+
+    const auto rows = db.list();
+
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0], std::make_pair(
+        std::string("a"),
+        std::string("new")
+    ));
+    EXPECT_EQ(rows[1], std::make_pair(
+        std::string("c"),
+        std::string("visible")
+    ));
+}
+
 TEST_F(DatabaseTest, CompactionKeepsNewestValue) {
     Database db(testDirectory.string());
 
