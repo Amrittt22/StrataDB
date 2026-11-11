@@ -26,4 +26,4 @@ ENV HOST=0.0.0.0
 EXPOSE 8080
 
 # Use Railway's assigned port and persistent data directory
-CMD ["sh", "-c", "./build/stratadb_server /data ${PORT:-8080} 1000"]
+CMD ["./build/stratadb_server", "/data"]

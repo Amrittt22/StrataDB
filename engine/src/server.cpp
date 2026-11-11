@@ -19,49 +19,55 @@
 std::mutex databaseMutex;
 
 // Escape strings for valid JSON output.
-std::string jsonEscape(const std::string& input) {
+std::string jsonEscape(const std::string &input)
+{
     std::ostringstream output;
 
-    for (unsigned char c : input) {
-        switch (c) {
-            case '"':
-                output << "\\\"";
-                break;
+    for (unsigned char c : input)
+    {
+        switch (c)
+        {
+        case '"':
+            output << "\\\"";
+            break;
 
-            case '\\':
-                output << "\\\\";
-                break;
+        case '\\':
+            output << "\\\\";
+            break;
 
-            case '\b':
-                output << "\\b";
-                break;
+        case '\b':
+            output << "\\b";
+            break;
 
-            case '\f':
-                output << "\\f";
-                break;
+        case '\f':
+            output << "\\f";
+            break;
 
-            case '\n':
-                output << "\\n";
-                break;
+        case '\n':
+            output << "\\n";
+            break;
 
-            case '\r':
-                output << "\\r";
-                break;
+        case '\r':
+            output << "\\r";
+            break;
 
-            case '\t':
-                output << "\\t";
-                break;
+        case '\t':
+            output << "\\t";
+            break;
 
-            default:
-                if (c < 0x20) {
-                    const char* hex = "0123456789abcdef";
+        default:
+            if (c < 0x20)
+            {
+                const char *hex = "0123456789abcdef";
 
-                    output << "\\u00";
-                    output << hex[(c >> 4) & 0x0F];
-                    output << hex[c & 0x0F];
-                } else {
-                    output << static_cast<char>(c);
-                }
+                output << "\\u00";
+                output << hex[(c >> 4) & 0x0F];
+                output << hex[c & 0x0F];
+            }
+            else
+            {
+                output << static_cast<char>(c);
+            }
         }
     }
 
@@ -69,68 +75,83 @@ std::string jsonEscape(const std::string& input) {
 }
 
 void sendJson(
-    httplib::Response& response,
+    httplib::Response &response,
     int status,
-    const std::string& body
-) {
+    const std::string &body)
+{
     response.status = status;
 
     response.set_content(
         body,
-        "application/json"
-    );
+        "application/json");
 }
 
 void sendError(
-    httplib::Response& response,
+    httplib::Response &response,
     int status,
-    const std::string& message
-) {
+    const std::string &message)
+{
     sendJson(
         response,
         status,
         "{\"success\":false,\"error\":\"" +
             jsonEscape(message) +
-            "\"}"
-    );
+            "\"}");
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[])
+{
 
     std::string dataDirectory = "./stratadb_data";
     int port = 8080;
     std::size_t flushThreshold = 1000;
 
     // Argument 1: Database directory
-    if (argc >= 2) {
+    if (argc >= 2)
+    {
         dataDirectory = argv[1];
     }
 
     // Argument 2: Server port
-    if (argc >= 3) {
-        try {
-            std::size_t parsedLength = 0;
-            port = std::stoi(argv[2], &parsedLength);
 
-            if (parsedLength != std::string(argv[2]).size()) {
+    // Argument 2: Server port.
+    // If no argument is provided, read Railway's PORT environment variable.
+    std::string portValue;
+
+    if (argc >= 3)
+    {
+        portValue = argv[2];
+    }
+    else if (const char *portEnv = std::getenv("PORT"))
+    {
+        portValue = portEnv;
+    }
+
+    if (!portValue.empty())
+    {
+        try
+        {
+            std::size_t parsedLength = 0;
+            port = std::stoi(portValue, &parsedLength);
+
+            if (parsedLength != portValue.size())
+            {
                 throw std::invalid_argument(
-                    "Port contains non-numeric characters"
-                );
+                    "Port contains non-numeric characters");
             }
-        } catch (const std::exception&) {
-            std::cerr << "Invalid port\n";
+        }
+        catch (const std::exception &)
+        {
+            std::cerr << "Invalid port: " << portValue << '\n';
             return 1;
         }
     }
 
-    if (port < 1 || port > 65535) {
-        std::cerr << "Port must be between 1 and 65535\n";
-        return 1;
-    }
-
     // Argument 3: MemTable flush threshold
-    if (argc >= 4) {
-        try {
+    if (argc >= 4)
+    {
+        try
+        {
             std::size_t parsedLength = 0;
 
             unsigned long long parsedThreshold =
@@ -140,17 +161,17 @@ int main(int argc, char* argv[]) {
                 parsedLength != std::string(argv[3]).size() ||
                 parsedThreshold == 0 ||
                 parsedThreshold >
-                    std::numeric_limits<std::size_t>::max()
-            ) {
+                    std::numeric_limits<std::size_t>::max())
+            {
                 throw std::invalid_argument(
-                    "Invalid flush threshold"
-                );
+                    "Invalid flush threshold");
             }
 
             flushThreshold =
                 static_cast<std::size_t>(parsedThreshold);
-
-        } catch (const std::exception&) {
+        }
+        catch (const std::exception &)
+        {
             std::cerr
                 << "Invalid flush threshold. "
                 << "It must be a positive integer.\n";
@@ -161,7 +182,8 @@ int main(int argc, char* argv[]) {
     // Initialize database with the configured flush threshold.
     Database database(dataDirectory, flushThreshold);
 
-    if (!database.open()) {
+    if (!database.open())
+    {
         std::cerr << "Failed to open StrataDB\n";
         return 1;
     }
@@ -170,32 +192,26 @@ int main(int argc, char* argv[]) {
 
     // CORS headers for the React development server.
     // Restrict the origin before exposing this server publicly.
-    server.set_default_headers({
-        {"Access-Control-Allow-Origin", "*"},
-        {"Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS"},
-        {"Access-Control-Allow-Headers", "Content-Type"}
-    });
+    server.set_default_headers({{"Access-Control-Allow-Origin", "*"},
+                                {"Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS"},
+                                {"Access-Control-Allow-Headers", "Content-Type"}});
 
     // CORS preflight.
-    server.Options(R"(/.*)", [](const httplib::Request&,
-                                httplib::Response& response) {
-        response.status = 204;
-    });
+    server.Options(R"(/.*)", [](const httplib::Request &,
+                                httplib::Response &response)
+                   { response.status = 204; });
 
     // ------------------------------------------------
     // HEALTH
     // GET /health
     // ------------------------------------------------
 
-    server.Get("/health", [](const httplib::Request&,
-                             httplib::Response& response) {
-
-        sendJson(
-            response,
-            200,
-            R"({"success":true,"status":"healthy","engine":"StrataDB"})"
-        );
-    });
+    server.Get("/health", [](const httplib::Request &,
+                             httplib::Response &response)
+               { sendJson(
+                     response,
+                     200,
+                     R"({"success":true,"status":"healthy","engine":"StrataDB"})"); });
 
     // ------------------------------------------------
     // PUT
@@ -206,20 +222,22 @@ int main(int argc, char* argv[]) {
 
     server.Put(
         R"(/kv/(.+))",
-        [&](const httplib::Request& request,
-            httplib::Response& response) {
-
+        [&](const httplib::Request &request,
+            httplib::Response &response)
+        {
             const std::string key = request.matches[1].str();
             const std::string value = request.body;
 
-            if (key.empty()) {
+            if (key.empty())
+            {
                 sendError(response, 400, "Key cannot be empty");
                 return;
             }
 
             std::lock_guard<std::mutex> lock(databaseMutex);
 
-            if (!database.put(key, value)) {
+            if (!database.put(key, value))
+            {
                 sendError(response, 500, "Failed to store value");
                 return;
             }
@@ -227,11 +245,11 @@ int main(int argc, char* argv[]) {
             std::string json =
                 "{\"success\":true,"
                 "\"message\":\"Value stored\","
-                "\"key\":\"" + jsonEscape(key) + "\"}";
+                "\"key\":\"" +
+                jsonEscape(key) + "\"}";
 
             sendJson(response, 200, json);
-        }
-    );
+        });
 
     // ------------------------------------------------
     // GET
@@ -240,28 +258,30 @@ int main(int argc, char* argv[]) {
 
     server.Get(
         R"(/kv/(.+))",
-        [&](const httplib::Request& request,
-            httplib::Response& response) {
-
+        [&](const httplib::Request &request,
+            httplib::Response &response)
+        {
             const std::string key = request.matches[1].str();
 
             std::lock_guard<std::mutex> lock(databaseMutex);
 
             std::string value;
 
-            if (!database.get(key, value)) {
+            if (!database.get(key, value))
+            {
                 sendError(response, 404, "Key not found");
                 return;
             }
 
             std::string json =
                 "{\"success\":true,"
-                "\"key\":\"" + jsonEscape(key) + "\","
-                "\"value\":\"" + jsonEscape(value) + "\"}";
+                "\"key\":\"" +
+                jsonEscape(key) + "\","
+                                  "\"value\":\"" +
+                jsonEscape(value) + "\"}";
 
             sendJson(response, 200, json);
-        }
-    );
+        });
 
     // ------------------------------------------------
     // DELETE
@@ -270,14 +290,15 @@ int main(int argc, char* argv[]) {
 
     server.Delete(
         R"(/kv/(.+))",
-        [&](const httplib::Request& request,
-            httplib::Response& response) {
-
+        [&](const httplib::Request &request,
+            httplib::Response &response)
+        {
             const std::string key = request.matches[1].str();
 
             std::lock_guard<std::mutex> lock(databaseMutex);
 
-            if (!database.remove(key)) {
+            if (!database.remove(key))
+            {
                 sendError(response, 404, "Key not found");
                 return;
             }
@@ -285,10 +306,8 @@ int main(int argc, char* argv[]) {
             sendJson(
                 response,
                 200,
-                "{\"success\":true,\"message\":\"Key deleted\"}"
-            );
-        }
-    );
+                "{\"success\":true,\"message\":\"Key deleted\"}");
+        });
 
     // ------------------------------------------------
     // SCAN
@@ -297,17 +316,17 @@ int main(int argc, char* argv[]) {
 
     server.Get(
         "/scan",
-        [&](const httplib::Request& request,
-            httplib::Response& response) {
-
+        [&](const httplib::Request &request,
+            httplib::Response &response)
+        {
             if (!request.has_param("start") ||
-                !request.has_param("end")) {
+                !request.has_param("end"))
+            {
 
                 sendError(
                     response,
                     400,
-                    "Both start and end query parameters are required"
-                );
+                    "Both start and end query parameters are required");
 
                 return;
             }
@@ -318,12 +337,12 @@ int main(int argc, char* argv[]) {
             const std::string endKey =
                 request.get_param_value("end");
 
-            if (startKey > endKey) {
+            if (startKey > endKey)
+            {
                 sendError(
                     response,
                     400,
-                    "Start key must not be greater than end key"
-                );
+                    "Start key must not be greater than end key");
 
                 return;
             }
@@ -339,9 +358,11 @@ int main(int argc, char* argv[]) {
                  << rows.size()
                  << ",\"results\":[";
 
-            for (std::size_t i = 0; i < rows.size(); ++i) {
+            for (std::size_t i = 0; i < rows.size(); ++i)
+            {
 
-                if (i > 0) {
+                if (i > 0)
+                {
                     json << ",";
                 }
 
@@ -359,8 +380,7 @@ int main(int argc, char* argv[]) {
             json << "]}";
 
             sendJson(response, 200, json.str());
-        }
-    );
+        });
 
     // ------------------------------------------------
     // STATS
@@ -369,9 +389,9 @@ int main(int argc, char* argv[]) {
 
     server.Get(
         "/stats",
-        [&](const httplib::Request&,
-            httplib::Response& response) {
-
+        [&](const httplib::Request &,
+            httplib::Response &response)
+        {
             std::lock_guard<std::mutex> lock(databaseMutex);
 
             std::ostringstream json;
@@ -386,22 +406,19 @@ int main(int argc, char* argv[]) {
                 << database.sstableCount()
                 << ","
                 << "\"auto_flush_success\":"
-                << (
-                    database.wasLastAutoFlushSuccessful()
+                << (database.wasLastAutoFlushSuccessful()
                         ? "true"
-                        : "false"
-                )
+                        : "false")
                 << "}";
 
             sendJson(response, 200, json.str());
-        }
-    );
+        });
 
     // ------------------------------------------------
     // SERVER STARTUP
     // ------------------------------------------------
 
-       std::cout << "=================================\n";
+    std::cout << "=================================\n";
     std::cout << "       StrataDB HTTP Server\n";
     std::cout << "=================================\n";
     std::cout << "Data directory: " << dataDirectory << '\n';
@@ -410,7 +427,7 @@ int main(int argc, char* argv[]) {
 
     // Use Railway's HOST when deployed.
     // Otherwise, default to localhost for local development.
-    const char* hostEnv = std::getenv("HOST");
+    const char *hostEnv = std::getenv("HOST");
     const std::string host =
         (hostEnv && *hostEnv) ? hostEnv : "127.0.0.1";
 
@@ -418,7 +435,8 @@ int main(int argc, char* argv[]) {
               << ":" << port << "/health\n";
     std::cout << "=================================\n";
 
-    if (!server.listen(host, port)) {
+    if (!server.listen(host, port))
+    {
         std::cerr << "Failed to start HTTP server\n";
         return 1;
     }
