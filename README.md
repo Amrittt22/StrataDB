@@ -1,17 +1,27 @@
 # StrataDB
 
-### A C++ LSM-Tree-Based Key-Value Storage Engine
+### A C++ LSM-Tree-Based Persistent Key-Value Storage Engine
 
-StrataDB is a persistent key-value storage engine built from scratch in C++17. It explores the internal architecture of modern storage systems through concepts such as Log-Structured Merge Trees (LSM-Trees), Write-Ahead Logging (WAL), MemTables, SSTables, Bloom Filters, tombstones, compaction, and checkpoint-based recovery.
+StrataDB is a persistent key-value storage engine built from scratch in C++17. It explores the internal architecture of modern storage systems through concepts such as Log-Structured Merge Trees (LSM-Trees), Write-Ahead Logging (WAL), MemTables, SSTables, Bloom Filters, tombstones, sequence numbers, compaction, and checkpoint-based recovery.
 
-The project also includes a C++ HTTP REST API, a React and TypeScript dashboard, and a standalone benchmarking executable.
+The project includes a C++ HTTP REST API, a React and TypeScript dashboard, and a standalone benchmarking executable.
 
-> **Project status:** Core storage engine, WAL recovery, automatic flushing, SSTable compaction, HTTP REST API, React dashboard, regression tests, and initial performance benchmarks implemented.
+**StrataDB is deployed with a React frontend on Vercel and a C++ backend on Railway, backed by persistent volume storage.**
+
+<p align="center">
+  <a href="https://frontend-amrit7.vercel.app/">
+    <img src="https://img.shields.io/badge/Live%20Demo-StrataDB-red?style=for-the-badge" alt="Live Demo"/>
+  </a>
+  <a href="https://github.com/Amrittt22/StrataDB">
+    <img src="https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github" alt="GitHub"/>
+  </a>
+</p>
 
 ---
 
 ## Table of Contents
 
+- [Live Demo](#live-demo)
 - [Overview](#overview)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -19,13 +29,31 @@ The project also includes a C++ HTTP REST API, a React and TypeScript dashboard,
 - [Data Flow](#data-flow)
 - [Project Structure](#project-structure)
 - [Technology Stack](#technology-stack)
-- [Build and Run](#build-and-run)
+- [Build and Run Locally](#build-and-run-locally)
 - [REST API](#rest-api)
 - [React Dashboard](#react-dashboard)
+- [Deployment Architecture](#deployment-architecture)
+- [Data Persistence](#data-persistence)
 - [Testing](#testing)
 - [Benchmarking](#benchmarking)
 - [Current Limitations](#current-limitations)
 - [Author](#author)
+
+---
+
+## Live Demo
+
+**Live Dashboard:** https://frontend-amrit7.vercel.app/
+
+**Backend API:** https://stratadb-production.up.railway.app
+
+**Health Check:** https://stratadb-production.up.railway.app/health
+
+**GitHub Repository:** https://github.com/Amrittt22/StrataDB
+
+The live dashboard communicates with the deployed C++ backend through HTTP REST APIs.
+
+Visitors can interact with the storage engine through the dashboard, including inserting, retrieving, updating, deleting, and scanning key-value records.
 
 ---
 
@@ -55,6 +83,7 @@ The project provides:
 - A C++ HTTP REST API.
 - A React and TypeScript dashboard.
 - A standalone performance benchmark.
+- A deployed application with persistent backend storage.
 
 ---
 
@@ -82,6 +111,8 @@ The project provides:
 - Checkpoint-aware WAL recovery.
 - Handling of incomplete WAL tails during replay.
 - Persistence across server restarts.
+- Persistent Railway volume mounted at `/data`.
+- Verified data retention across backend restarts and new deployments.
 
 ### Backend API
 
@@ -281,6 +312,87 @@ This prevents already checkpointed operations from being replayed as new writes.
 
 ---
 
+## Data Flow
+
+### Insertion
+
+```text
+Client
+  |
+  v
+REST API
+  |
+  v
+Database
+  |
+  +----> WAL
+  |
+  v
+MemTable
+  |
+  v
+Threshold Check
+  |
+  v
+SSTable Flush
+  |
+  v
+Persistent Storage
+```
+
+### Retrieval
+
+```text
+Client
+  |
+  v
+REST API
+  |
+  v
+Database
+  |
+  v
+MemTable Lookup
+  |
+  v
+SSTable Lookup
+  |
+  v
+Bloom Filter
+  |
+  v
+Sequence Number Resolution
+  |
+  v
+Return Result
+```
+
+### Recovery
+
+```text
+Database Startup
+      |
+      v
+Load Manifest
+      |
+      v
+Initialize SSTables
+      |
+      v
+Read WAL
+      |
+      v
+Check Sequence Numbers
+      |
+      v
+Replay Newer Records
+      |
+      v
+Recovered Database State
+```
+
+---
+
 ## Project Structure
 
 ```text
@@ -335,6 +447,8 @@ StrataDB/
 │   └── vite.config.ts
 │
 ├── CMakeLists.txt
+├── Dockerfile
+├── .dockerignore
 ├── .gitignore
 └── README.md
 ```
@@ -355,10 +469,13 @@ StrataDB/
 | TypeScript | Frontend application logic |
 | Vite | Frontend development and build tooling |
 | CSS | Dashboard styling |
+| Docker | Backend containerization |
+| Railway | C++ backend deployment and persistent storage |
+| Vercel | Frontend hosting |
 
 ---
 
-## Build and Run
+## Build and Run Locally
 
 ### Prerequisites
 
@@ -452,6 +569,8 @@ Keep the C++ backend and React development server running simultaneously.
 ## REST API
 
 **Default server address:** `http://localhost:8080`
+
+**Deployed server address:** `https://stratadb-production.up.railway.app`
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -552,7 +671,124 @@ The frontend communicates with the backend through the API client in:
 frontend/src/api/stratadb.ts
 ```
 
-The backend base URL can be configured through `VITE_API_BASE_URL`.
+The backend base URL is configured through `VITE_API_BASE_URL`.
+
+### Live Dashboard
+
+Try the deployed application:
+
+https://frontend-amrit7.vercel.app/
+
+---
+
+## Deployment Architecture
+
+StrataDB is deployed using separate frontend and backend hosting services.
+
+```text
+                  User Browser
+                       |
+                       v
+              Vercel Frontend
+             React + TypeScript
+                       |
+                       | HTTPS REST API
+                       v
+              Railway Backend
+                  C++ Server
+                       |
+                       v
+                  Database
+                       |
+          +------------+------------+
+          |                         |
+          v                         v
+       MemTable                    WAL
+          |
+          v
+       SSTables
+          |
+          v
+    Railway Persistent Volume
+             /data
+```
+
+### Frontend Deployment — Vercel
+
+The React and TypeScript dashboard is hosted on Vercel.
+
+**Live URL:**
+
+https://frontend-amrit7.vercel.app/
+
+The frontend uses the following environment variable:
+
+```env
+VITE_API_BASE_URL=https://stratadb-production.up.railway.app
+```
+
+### Backend Deployment — Railway
+
+The C++ REST API is deployed on Railway using Docker.
+
+**Backend URL:**
+
+https://stratadb-production.up.railway.app
+
+**Health endpoint:**
+
+https://stratadb-production.up.railway.app/health
+
+The backend runs inside a Docker container and listens on the configured Railway port.
+
+### Container Configuration
+
+The backend Docker image builds the C++ application using CMake and runs the server with `/data` as its database directory.
+
+```dockerfile
+CMD ["./build/stratadb_server", "/data"]
+```
+
+### Deployment Workflow
+
+1. Source code is maintained in GitHub.
+2. Railway builds and deploys the C++ backend.
+3. Vercel builds and deploys the React frontend.
+4. The frontend communicates with the backend through HTTPS REST APIs.
+5. The backend stores database files in the mounted persistent volume.
+
+---
+
+## Data Persistence
+
+StrataDB stores database files in the configured database directory.
+
+In the deployed environment, the database directory is:
+
+```text
+/data
+```
+
+Railway provides a persistent volume mounted at `/data`.
+
+This ensures database files remain available when the backend container is restarted or replaced during a deployment.
+
+### Persistence Verification
+
+The deployed application has been tested for:
+
+- Inserting records.
+- Retrieving stored records.
+- Restarting the backend service.
+- Retrieving records after a backend restart.
+- Triggering a new backend deployment.
+- Retrieving records after the new deployment.
+
+The records remained available after both backend restarts and new deployments.
+
+**Important:** Persistent volume storage does not replace a backup strategy. Deleting the volume or experiencing storage failure can result in data loss.
+
+StrataDB also does not currently claim complete operating-system-level durability guarantees using explicit `fsync` or Windows `FlushFileBuffers` calls.
 
 ---
 
@@ -727,7 +963,12 @@ In particular, the project does not currently claim a complete operating-system-
 
 - GitHub: [Amrittt22](https://github.com/Amrittt22)
 - Project Repository: [StrataDB](https://github.com/Amrittt22/StrataDB)
+- Live Dashboard: [StrataDB](https://frontend-amrit7.vercel.app/)
 
 ---
 
-*StrataDB — Exploring how storage engines work, one component at a time.*
+<p align="center">
+  <strong>StrataDB</strong>
+  <br/>
+  Exploring how storage engines work, one component at a time.
+</p>
