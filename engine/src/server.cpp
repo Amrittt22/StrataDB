@@ -112,17 +112,30 @@ int main(int argc, char *argv[])
         dataDirectory = argv[1];
     }
 
-    // Argument 2: Server port
-
     // Argument 2: Server port.
-    // If no argument is provided, read Railway's PORT environment variable.
+    // Prefer Railway's PORT environment variable when the
+    // command line contains an unexpanded shell placeholder.
+
     std::string portValue;
+    const char *portEnv = std::getenv("PORT");
 
     if (argc >= 3)
     {
-        portValue = argv[2];
+        std::string argument = argv[2];
+
+        if (argument == "$PORT" || argument == "${PORT}")
+        {
+            if (portEnv)
+            {
+                portValue = portEnv;
+            }
+        }
+        else
+        {
+            portValue = argument;
+        }
     }
-    else if (const char *portEnv = std::getenv("PORT"))
+    else if (portEnv)
     {
         portValue = portEnv;
     }
@@ -136,8 +149,7 @@ int main(int argc, char *argv[])
 
             if (parsedLength != portValue.size())
             {
-                throw std::invalid_argument(
-                    "Port contains non-numeric characters");
+                throw std::invalid_argument("Invalid port");
             }
         }
         catch (const std::exception &)
