@@ -1,978 +1,322 @@
 # StrataDB
 
-### A C++ LSM-Tree-Based Persistent Key-Value Storage Engine
+## A persistent C++17 LSM-tree key-value engine
 
-StrataDB is a persistent key-value storage engine built from scratch in C++17. It explores the internal architecture of modern storage systems through concepts such as Log-Structured Merge Trees (LSM-Trees), Write-Ahead Logging (WAL), MemTables, SSTables, Bloom Filters, tombstones, sequence numbers, compaction, and checkpoint-based recovery.
+StrataDB is an educational but working persistent key-value storage engine. It combines a WAL, SkipList-backed MemTable, immutable SSTables, Bloom-filter-assisted lookups, sequence numbers, tombstones, manifest checkpoints, recovery, and compaction behind a small C++ HTTP API. A React + TypeScript dashboard provides CRUD operations, range scans, statistics, and a Data Explorer.
 
-The project includes a C++ HTTP REST API, a React and TypeScript dashboard, and a standalone benchmarking executable.
+> **Deployment status:** the frontend runs on Vercel and the C++ backend runs on Railway with a persistent volume mounted at `/data`.
 
-**StrataDB is deployed with a React frontend on Vercel and a C++ backend on Railway, backed by persistent volume storage.**
+## Live links
 
-<p align="center">
-  <a href="https://frontend-amrit7.vercel.app/">
-    <img src="https://img.shields.io/badge/Live%20Demo-StrataDB-red?style=for-the-badge" alt="Live Demo"/>
-  </a>
-  <a href="https://github.com/Amrittt22/StrataDB">
-    <img src="https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github" alt="GitHub"/>
-  </a>
-</p>
-
----
-
-## Table of Contents
-
-- [Live Demo](#live-demo)
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Storage Engine Components](#storage-engine-components)
-- [Data Flow](#data-flow)
-- [Project Structure](#project-structure)
-- [Technology Stack](#technology-stack)
-- [Build and Run Locally](#build-and-run-locally)
-- [REST API](#rest-api)
-- [React Dashboard](#react-dashboard)
-- [Deployment Architecture](#deployment-architecture)
-- [Data Persistence](#data-persistence)
-- [Testing](#testing)
-- [Benchmarking](#benchmarking)
-- [Current Limitations](#current-limitations)
-- [Author](#author)
-
----
-
-## Live Demo
-
-StrataDB is deployed and accessible through the following links:
-
-- **Live Dashboard:** [https://frontend-amrit7.vercel.app/](https://frontend-amrit7.vercel.app/)
-- **Backend Health Check:** [https://stratadb-production.up.railway.app/health](https://stratadb-production.up.railway.app/health)
-- **GitHub Repository:** [https://github.com/Amrittt22/StrataDB](https://github.com/Amrittt22/StrataDB)
-
-### Deployment
-
-- **Frontend:** React + TypeScript, hosted on Vercel.
-- **Backend:** C++ REST API, hosted on Railway.
-- **Storage:** Railway Persistent Volume mounted at `/data`.
-
-The frontend communicates with the C++ backend through HTTP REST APIs. The backend health endpoint confirms server availability.
-
-Visitors can interact with the storage engine through the dashboard, including inserting, retrieving, updating, deleting, and scanning key-value records.
-
----
+- [Dashboard](https://frontend-amrit7.vercel.app/)
+- [Backend health](https://stratadb-production.up.railway.app/health)
+- [Backend records API](https://stratadb-production.up.railway.app/records)
+- [GitHub repository](https://github.com/Amrittt22/StrataDB)
 
 ## Overview
 
-StrataDB uses an LSM-Tree-inspired architecture to store key-value records persistently.
+Writes are appended to the WAL and applied to an in-memory MemTable. When the configured threshold is reached, the MemTable snapshot is written as an immutable SSTable, the manifest checkpoint advances, and checkpointed MemTable/WAL state is cleared. Reads merge the MemTable with all SSTables by sequence number. Deletes are represented by tombstones until compaction.
 
-Instead of modifying disk-based data structures for every write, StrataDB first records modifications in a Write-Ahead Log and stores them in an in-memory MemTable.
+The implementation is intentionally small and inspectable:
 
-When the MemTable reaches its configured threshold, its contents are flushed into an immutable Sorted String Table (SSTable).
+```mermaid
+flowchart LR
+    UI[React dashboard] --> API[C++ HTTP server]
+    API --> DB[Database]
+    DB --> MT[MemTable / SkipList]
+    DB --> WAL[WAL]
+    DB --> SM[SSTableManager]
+    SM --> SST[SSTable files]
+    SM --> BF[Bloom filters]
+    DB --> MF[Manifest checkpoint]
+```
 
-Sequence numbers allow the engine to distinguish between different versions of a key. Tombstones represent deletions and prevent older versions from incorrectly reappearing.
+## Key features
 
-The project provides:
-
-- A persistent C++ key-value storage engine.
-- A Skip List-based MemTable.
-- Write-Ahead Logging and recovery.
-- Immutable SSTable storage.
-- Bloom Filter-based lookup optimization.
-- Sequence-number-based record versioning.
-- Tombstone-based deletion.
-- Ordered range scanning.
-- SSTable compaction.
-- Manifest-based checkpoint recovery.
-- Automatic MemTable flushing.
-- A C++ HTTP REST API.
-- A React and TypeScript dashboard.
-- A standalone performance benchmark.
-- A deployed application with persistent backend storage.
-
----
-
-## Features
-
-### Storage Engine
-
-- Persistent key-value storage.
-- Skip List-based MemTable.
-- Write-Ahead Logging (WAL).
-- Immutable SSTable files.
-- Bloom Filter-based lookup optimization.
-- Sequence-number-based record versioning.
-- Tombstone-based deletion.
-- Ordered range scanning.
-- SSTable compaction.
-- Automatic and manual MemTable flushing.
-
-### Recovery and Persistence
-
-- Sequence-aware WAL records.
-- WAL replay during database initialization.
-- SSTable V3 format with sequence numbers.
-- Manifest-based checkpoint tracking.
-- Checkpoint-aware WAL recovery.
-- Handling of incomplete WAL tails during replay.
-- Persistence across server restarts.
-- Persistent Railway volume mounted at `/data`.
-- Verified data retention across backend restarts and new deployments.
-
-### Backend API
-
-- C++ HTTP REST server using cpp-httplib.
-- Health-check endpoint.
-- PUT, GET, and DELETE operations.
-- Range scan endpoint.
-- Storage statistics endpoint.
-- Configurable automatic flush threshold.
-- Mutex-based request serialization.
-
-### Frontend Dashboard
-
-- React and TypeScript interface.
-- Backend connection status.
-- Key-value insertion and retrieval.
-- Key updates and deletion.
-- Range scanning interface.
-- MemTable and SSTable statistics.
-- Automatic statistics refresh.
-- Success and error notifications.
-
-### Testing and Benchmarking
-
-- GoogleTest-based storage-engine test suite.
-- WAL recovery regression tests.
-- Compaction regression tests.
-- HTTP API integration verification.
-- Standalone benchmark executable.
-- PUT, GET, range scan, and compaction measurements.
-- CSV benchmark output.
-
----
+- Persistent PUT, GET, DELETE, and ordered range scan.
+- Sequence-aware WAL replay and checkpoint recovery.
+- SkipList MemTable with tombstone tracking.
+- SSTable V3 binary format with values, tombstones, and sequence numbers.
+- Bloom filters to skip SSTables that cannot contain a key.
+- Explicit flush, automatic flush threshold, and compaction.
+- REST API and a dark-theme React dashboard.
+- Data Explorer backed by the actual `/records` endpoint.
+- GoogleTest suite and a repeatable local benchmark executable.
 
 ## Architecture
 
-StrataDB follows an LSM-Tree-inspired architecture.
+### LSM-tree model
 
-```text
-                  Client Application
-                          |
-                          v
-                   React Dashboard
-                          |
-                          v
-                    HTTP REST API
-                          |
-                          v
-                       Database
-                          |
-              +-----------+-----------+
-              |                       |
-              v                       v
-           MemTable                  WAL
-           Skip List           Write-Ahead Log
-              |
-              | Automatic / Manual Flush
-              v
-          SSTable Files
-        Immutable Storage
-              |
-              v
-         SSTable Manager
-              |
-       +------+------+
-       |             |
-       v             v
-   Bloom Filters  Compaction
-              |
-              v
-       Persistent Storage
+The engine uses a mutable in-memory level and immutable on-disk tables. SSTables are discovered from `sstables/sstable_<id>.sst` and managed newest-first. Visibility is resolved by the greatest sequence number for each key; tombstones are not returned as values.
 
-            Manifest
-       Checkpoint Metadata
+### Write path
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as HTTP server
+    participant D as Database
+    participant W as WAL
+    participant M as MemTable
+    participant T as SSTableManager
+    participant F as Manifest
+    C->>S: PUT /kv/:key
+    S->>D: put(key, value)
+    D->>W: append sequence + PUT
+    D->>M: insert value
+    alt threshold reached
+        D->>T: write MemTable snapshot
+        D->>F: save checkpoint sequence
+        D->>M: clear checkpointed entries
+        D->>W: reset checkpointed WAL
+    end
+    S-->>C: JSON success
 ```
 
-### Write Path
+### Read path
 
-1. A client sends a write request through the REST API.
-2. The database assigns a sequence number.
-3. The operation is appended to the WAL.
-4. The record is inserted into the MemTable.
-5. The engine checks the configured MemTable threshold.
-6. If the threshold is reached, the MemTable is flushed into an SSTable.
-7. Checkpoint metadata is updated.
-8. The MemTable and WAL are cleared after successful checkpoint progression.
+```mermaid
+flowchart TD
+    R[GET or scan] --> M{MemTable has newest entry?}
+    M -->|live value| V[Return value]
+    M -->|tombstone| N[Not found / omit from scan]
+    M -->|absent| S[SSTableManager]
+    S --> B{Bloom filter may contain key?}
+    B -->|no| X[Try next table]
+    B -->|yes| L[Binary-search table entries]
+    L --> Q[Choose greatest sequence]
+    Q --> V
+    Q --> N
+```
 
-### Read Path
+### Flush, recovery, and compaction
 
-1. The database checks the MemTable.
-2. If the key is not found there, it searches the SSTables.
-3. Bloom Filters help eliminate unnecessary SSTable lookups.
-4. Candidate records are compared using sequence numbers.
-5. The newest record determines the result.
-6. A newest-version tombstone means the key is deleted.
+```mermaid
+flowchart TD
+    A[MemTable snapshot] --> B[Write temporary SSTable]
+    B --> C[Load and rename final sstable_N.sst]
+    C --> D[Save manifest checkpoint]
+    D --> E[Clear entries through checkpoint]
 
-### Compaction Path
+    R[Process starts] --> M[Load MANIFEST]
+    M --> T[Load existing SSTables]
+    T --> W[Replay WAL records after checkpoint]
+    W --> O[Open database]
 
-1. The SSTable Manager selects SSTables for compaction.
-2. Their records are merged.
-3. Sequence numbers are used to resolve different versions of the same key.
-4. The newest record for each key is retained.
-5. Tombstones are preserved by the current compaction implementation to prevent older values from reappearing.
+    C1[Multiple SSTables] --> C2[Merge by key]
+    C2 --> C3[Keep greatest sequence]
+    C3 --> C4[Write compacted SSTable]
+    C4 --> C5[Remove old tables]
+```
 
----
+## Storage engine components
 
-## Storage Engine Components
+- **Database:** coordinates MemTable, WAL, SSTableManager, and Manifest.
+- **MemTable:** stores live values in a SkipList and tracks sequence numbers and tombstones.
+- **SkipList:** ordered in-memory index with randomized levels up to 16.
+- **WAL:** binary records containing operation, sequence, key length, value length, and payload. Incomplete tails are truncated during replay; malformed records fail recovery.
+- **SSTable:** immutable sorted binary table with magic/version marker `STRATAS3`, bounded field sizes, tombstones, and sequence numbers.
+- **BloomFilter:** two-hash probabilistic membership filter, configured for a 1% default false-positive target.
+- **SSTableManager:** discovers, orders, loads, searches, writes, and compacts SSTables.
+- **Manifest:** atomically replaces a checkpoint file containing magic `STRATAM1` and the latest checkpoint sequence.
 
-### 1. MemTable
+More detail is in the [storage-engine documentation](docs/storage-engine/lsm-tree.md).
 
-The MemTable is the in-memory component responsible for holding recent database modifications.
+## Sequence numbers and tombstones
 
-StrataDB uses a Skip List to maintain entries in sorted order.
+Every MemTable mutation receives a monotonically increasing `uint64_t` sequence number. A delete writes a tombstone with an empty value. Reads and scans compare sequence numbers across MemTable and SSTables; the newest tombstone hides older values. Compaction retains the newest entry, including tombstones, so deleted keys do not reappear.
 
-Responsibilities:
+## REST API
 
-- Store recent key-value updates.
-- Maintain sequence numbers.
-- Track deleted keys using tombstones.
-- Provide ordered snapshots for flushing.
-- Trigger automatic flushing when the configured threshold is reached.
+The server listens on `HOST` and `PORT` (defaults `127.0.0.1:8080`) and uses the first command-line argument as the data directory. Full request/response documentation and cURL examples are in [docs/backend/rest-api.md](docs/backend/rest-api.md).
 
-### 2. Write-Ahead Log (WAL)
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/health` | Health check |
+| PUT | `/kv/:key` | Insert or update raw-text value |
+| GET | `/kv/:key` | Retrieve one value |
+| DELETE | `/kv/:key` | Write a tombstone |
+| GET | `/scan?start=a&end=z` | Inclusive ordered range scan |
+| GET | `/records` | Complete visible-record snapshot |
+| GET | `/stats` | MemTable, SSTable, and last auto-flush status |
 
-The WAL records database modifications before they are applied to the in-memory data structure.
+`/records` is not paginated by the backend. It returns all visible records in deterministic key order; the dashboard filters and paginates that snapshot locally.
 
-Each WAL V2 record contains:
+## Data Explorer dashboard
 
-| Field | Description |
+The dashboard includes:
+
+- Overview and connection status.
+- CRUD operations for insert/update, retrieve, and delete.
+- MemTable/SSTable/flush statistics.
+- Range Scan with inclusive start and end keys.
+- Data Explorer using `/records`.
+
+Data Explorer sorts records by key, loads actual backend values, reports total records, provides case-insensitive key filtering, loading/error/empty states, refresh and retry actions, and uses browser-side pagination with a default page size of 25. Selecting a record opens full key/value details, UTF-8 byte size, JSON or Text type, pretty-printed valid JSON, plain-text fallback, and copy buttons. Copying does not transform the stored value.
+
+See [docs/frontend/dashboard.md](docs/frontend/dashboard.md).
+
+## Technology stack
+
+| Area | Technology |
 |---|---|
-| Operation | Put or delete |
-| Sequence number | Version identifier |
-| Key length | Length of the key |
-| Value length | Length of the value |
-| Key | Key bytes |
-| Value | Value bytes |
+| Engine | C++17, CMake |
+| HTTP | cpp-httplib |
+| Tests | GoogleTest |
+| Frontend | React 19, TypeScript, Vite |
+| Hosting | Railway (backend), Vercel (frontend) |
+| Persistence | WAL, SSTables, Railway volume |
 
-The WAL supports replay during recovery and skips records already covered by the manifest checkpoint.
-
-### 3. SSTable
-
-An SSTable is an immutable, disk-based file containing sorted database entries.
-
-StrataDB currently uses the V3 SSTable format, identified by the `STRATAS3` magic value.
-
-Entries contain:
-
-- Key.
-- Value.
-- Tombstone information.
-- Sequence number.
-
-This allows the engine to resolve different versions of a key across multiple SSTables.
-
-### 4. Bloom Filter
-
-Bloom Filters reduce unnecessary SSTable lookups.
-
-They provide probabilistic membership checks:
-
-- A negative result means the key is definitely absent.
-- A positive result means the key may be present.
-
-### 5. SSTable Manager
-
-The SSTable Manager manages the collection of immutable SSTable files.
-
-Responsibilities:
-
-- Track available SSTables.
-- Search across SSTables.
-- Resolve record versions using sequence numbers.
-- Perform compaction.
-- Preserve the newest record for each key during compaction.
-
-### 6. Compaction
-
-Compaction merges SSTables into a consolidated representation.
-
-StrataDB uses sequence numbers to select the newest record for each key.
-
-Tombstones are retained during the current compaction process to prevent deleted keys from reappearing from older tables.
-
-### 7. Manifest and Checkpoint Recovery
-
-The Manifest stores the database checkpoint sequence number.
-
-During recovery:
-
-1. The database loads checkpoint metadata.
-2. SSTable storage is initialized.
-3. WAL records are examined.
-4. Records at or below the checkpoint are skipped.
-5. Newer records are replayed into the MemTable.
-
-This prevents already checkpointed operations from being replayed as new writes.
-
----
-
-## Data Flow
-
-### Insertion
+## Project structure
 
 ```text
-Client
-  |
-  v
-REST API
-  |
-  v
-Database
-  |
-  +----> WAL
-  |
-  v
-MemTable
-  |
-  v
-Threshold Check
-  |
-  v
-SSTable Flush
-  |
-  v
-Persistent Storage
+engine/
+  include/                 Public engine headers
+  src/                     Engine and HTTP server implementation
+  tests/                   GoogleTest suite
+  benchmarks/              Benchmark executable
+frontend/
+  src/App.tsx              Dashboard shell and CRUD/range/statistics views
+  src/DataExplorer.tsx     Data Explorer
+  src/api/stratadb.ts      Typed HTTP client
+docs/                      Organized technical documentation
+benchmarks/results/        Checked-in benchmark CSV
+Dockerfile                 Railway container build
+CMakeLists.txt             Engine, server, tests, and benchmark targets
 ```
 
-### Retrieval
-
-```text
-Client
-  |
-  v
-REST API
-  |
-  v
-Database
-  |
-  v
-MemTable Lookup
-  |
-  v
-SSTable Lookup
-  |
-  v
-Bloom Filter
-  |
-  v
-Sequence Number Resolution
-  |
-  v
-Return Result
-```
-
-### Recovery
-
-```text
-Database Startup
-      |
-      v
-Load Manifest
-      |
-      v
-Initialize SSTables
-      |
-      v
-Read WAL
-      |
-      v
-Check Sequence Numbers
-      |
-      v
-Replay Newer Records
-      |
-      v
-Recovered Database State
-```
-
----
-
-## Project Structure
-
-```text
-StrataDB/
-│
-├── engine/
-│   ├── include/
-│   │   ├── BloomFilter.h
-│   │   ├── Database.h
-│   │   ├── Logger.h
-│   │   ├── Manifest.h
-│   │   ├── MemTable.h
-│   │   ├── Record.h
-│   │   ├── SkipList.h
-│   │   ├── SSTable.h
-│   │   ├── SSTableManager.h
-│   │   ├── Stats.h
-│   │   └── WAL.h
-│   │
-│   ├── src/
-│   │   ├── BloomFilter.cpp
-│   │   ├── Database.cpp
-│   │   ├── Logger.cpp
-│   │   ├── Manifest.cpp
-│   │   ├── MemTable.cpp
-│   │   ├── SkipList.cpp
-│   │   ├── SSTable.cpp
-│   │   ├── SSTableManager.cpp
-│   │   ├── Stats.cpp
-│   │   ├── WAL.cpp
-│   │   ├── main.cpp
-│   │   └── server.cpp
-│   │
-│   ├── tests/
-│   │   └── GoogleTest component and regression tests
-│   │
-│   └── benchmarks/
-│       └── benchmark.cpp
-│
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   │   ├── api/
-│   │   │   └── stratadb.ts
-│   │   ├── assets/
-│   │   ├── App.tsx
-│   │   ├── App.css
-│   │   ├── index.css
-│   │   └── main.tsx
-│   ├── .env.example
-│   ├── package.json
-│   └── vite.config.ts
-│
-├── CMakeLists.txt
-├── Dockerfile
-├── .dockerignore
-├── .gitignore
-└── README.md
-```
-
----
-
-## Technology Stack
-
-| Technology | Purpose |
-|---|---|
-| C++ | Storage engine and HTTP backend |
-| C++17 | Language standard |
-| CMake | Build configuration |
-| Ninja | Build system |
-| GoogleTest | Unit and regression testing |
-| cpp-httplib | HTTP server |
-| React | Frontend dashboard |
-| TypeScript | Frontend application logic |
-| Vite | Frontend development and build tooling |
-| CSS | Dashboard styling |
-| Docker | Backend containerization |
-| Railway | C++ backend deployment and persistent storage |
-| Vercel | Frontend hosting |
-
----
-
-## Build and Run Locally
+## Build and installation
 
 ### Prerequisites
 
-- C++ compiler with C++17 support.
-- CMake.
-- Ninja.
-- Git.
-- Node.js and npm.
-- Internet access during initial dependency configuration if required.
+- C++17 compiler
+- CMake 3.16 or newer
+- Git
+- Node.js and npm for the frontend
 
-The development environment used for this project is Windows with MSYS2 UCRT64 GCC, CMake, and Ninja.
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/Amrittt22/StrataDB.git
-cd StrataDB
-```
-
-### 2. Configure the C++ Backend
-
-For Windows PowerShell with MSYS2 UCRT64:
+### Windows
 
 ```powershell
-$env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
-
-cmake -S . -B build -G Ninja `
-  -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe"
-```
-
-### 3. Build the Project
-
-```powershell
+cmake -S . -B build
 cmake --build build
 ```
 
-### 4. Run the REST Server
+### Linux/macOS
+
+```bash
+cmake -S . -B build
+cmake --build build -j2
+```
+
+CMake downloads cpp-httplib and GoogleTest through `FetchContent`.
+
+## Run locally
+
+Start the backend with an isolated local directory:
 
 ```powershell
-.\build\stratadb_server.exe
+.\build\stratadb_server.exe .\stratadb_data 8080 1000
 ```
 
-The server uses:
-
-| Setting | Default |
-|---|---|
-| Host | `127.0.0.1` |
-| Port | `8080` |
-| Database directory | `./stratadb_data` |
-| MemTable flush threshold | `1000` |
-
-You can provide a custom database directory, port, and flush threshold:
-
-```powershell
-.\build\stratadb_server.exe .\my_database 8080 1000
+```bash
+./build/stratadb_server ./stratadb_data 8080 1000
 ```
 
-The third argument controls the automatic MemTable flush threshold.
-
-### 5. Run the React Frontend
-
-Open another terminal:
-
-```powershell
-cd frontend
-npm install
-```
-
-Create a local `.env` file using `.env.example` as a reference:
-
-```env
-VITE_API_BASE_URL=http://localhost:8080
-```
+The arguments are data directory, port, and positive MemTable flush threshold. Never point destructive tests at Railway’s `/data` volume.
 
 Start the frontend:
 
 ```powershell
+cd frontend
+npm install
+$env:VITE_API_BASE_URL="http://localhost:8080"
 npm run dev
 ```
 
-Open the Vite URL displayed in the terminal, normally:
+The committed [`frontend/.env.example`](frontend/.env.example) contains the local default. Vite builds use `VITE_API_BASE_URL`; the API client defaults to `http://localhost:8080`.
 
-```text
-http://localhost:5173
-```
+## Tests
 
-Keep the C++ backend and React development server running simultaneously.
-
----
-
-## REST API
-
-**Default server address:** `http://localhost:8080`
-
-**Deployed server address:** `https://stratadb-production.up.railway.app`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/health` | Check server health |
-| PUT | `/kv/:key` | Insert or update a key |
-| GET | `/kv/:key` | Retrieve a key |
-| DELETE | `/kv/:key` | Delete a key |
-| GET | `/scan?start=a&end=z` | Scan a key range |
-| GET | `/stats` | Retrieve storage statistics |
-
-### API Examples
-
-**Health check**
-
-```http
-GET /health
-```
-
-**Insert a value**
-
-```http
-PUT /kv/name
-Content-Type: text/plain
-
-Amritanshu
-```
-
-**Retrieve a value**
-
-```http
-GET /kv/name
-```
-
-**Update a value**
-
-```http
-PUT /kv/name
-Content-Type: text/plain
-
-StrataDB
-```
-
-**Delete a key**
-
-```http
-DELETE /kv/name
-```
-
-**Scan a range**
-
-```http
-GET /scan?start=a&end=z
-```
-
-**Retrieve statistics**
-
-```http
-GET /stats
-```
-
-Example statistics response:
-
-```json
-{
-  "success": true,
-  "memtable_size": 3,
-  "sstable_count": 0,
-  "auto_flush_success": true
-}
-```
-
-The statistics endpoint exposes the current MemTable size, SSTable count, and last automatic flush status.
-
----
-
-## React Dashboard
-
-StrataDB includes a React and TypeScript dashboard connected to the C++ backend through the REST API.
-
-The dashboard provides:
-
-- Backend connection status.
-- Database health information.
-- Key-value insertion.
-- Key retrieval.
-- Key updates.
-- Key deletion.
-- Range scanning.
-- MemTable size monitoring.
-- SSTable count monitoring.
-- Automatic flush status.
-- Periodic statistics refresh.
-- Success and error notifications.
-
-The frontend communicates with the backend through the API client in:
-
-```text
-frontend/src/api/stratadb.ts
-```
-
-The backend base URL is configured through `VITE_API_BASE_URL`.
-
-### Live Dashboard
-
-Try the deployed application:
-
-https://frontend-amrit7.vercel.app/
-
----
-
-## Deployment Architecture
-
-StrataDB is deployed using separate frontend and backend hosting services.
-
-```text
-                  User Browser
-                       |
-                       v
-              Vercel Frontend
-             React + TypeScript
-                       |
-                       | HTTPS REST API
-                       v
-              Railway Backend
-                  C++ Server
-                       |
-                       v
-                  Database
-                       |
-          +------------+------------+
-          |                         |
-          v                         v
-       MemTable                    WAL
-          |
-          v
-       SSTables
-          |
-          v
-    Railway Persistent Volume
-             /data
-```
-
-### Frontend Deployment — Vercel
-
-The React and TypeScript dashboard is hosted on Vercel.
-
-**Live URL:**
-
-https://frontend-amrit7.vercel.app/
-
-The frontend uses the following environment variable:
-
-```env
-VITE_API_BASE_URL=https://stratadb-production.up.railway.app
-```
-
-### Backend Deployment — Railway
-
-The C++ REST API is deployed on Railway using Docker.
-
-**Backend URL:**
-
-https://stratadb-production.up.railway.app
-
-**Health endpoint:**
-
-https://stratadb-production.up.railway.app/health
-
-The backend runs inside a Docker container and listens on the configured Railway port.
-
-### Container Configuration
-
-The backend Docker image builds the C++ application using CMake and runs the server with `/data` as its database directory.
-
-```dockerfile
-CMD ["./build/stratadb_server", "/data"]
-```
-
-### Deployment Workflow
-
-1. Source code is maintained in GitHub.
-2. Railway builds and deploys the C++ backend.
-3. Vercel builds and deploys the React frontend.
-4. The frontend communicates with the backend through HTTPS REST APIs.
-5. The backend stores database files in the mounted persistent volume.
-
----
-
-## Data Persistence
-
-StrataDB stores database files in the configured database directory.
-
-In the deployed environment, the database directory is:
-
-```text
-/data
-```
-
-Railway provides a persistent volume mounted at `/data`.
-
-This ensures database files remain available when the backend container is restarted or replaced during a deployment.
-
-### Persistence Verification
-
-The deployed application has been tested for:
-
-- Inserting records.
-- Retrieving stored records.
-- Restarting the backend service.
-- Retrieving records after a backend restart.
-- Triggering a new backend deployment.
-- Retrieving records after the new deployment.
-
-The records remained available after both backend restarts and new deployments.
-
-**Important:** Persistent volume storage does not replace a backup strategy. Deleting the volume or experiencing storage failure can result in data loss.
-
-StrataDB also does not currently claim complete operating-system-level durability guarantees using explicit `fsync` or Windows `FlushFileBuffers` calls.
-
----
-
-## Testing
-
-StrataDB includes a GoogleTest-based test suite covering its core storage-engine components and regression scenarios.
-
-The test suite includes coverage for:
-
-- Bloom Filter.
-- Database operations.
-- Logger.
-- MemTable.
-- Skip List.
-- SSTable.
-- SSTable Manager.
-- Statistics.
-- Write-Ahead Log.
-- Sequence-aware recovery.
-- Checkpoint handling.
-- Automatic flushing.
-- WAL truncated-payload handling.
-- Compaction regression scenarios.
-
-### Run the Complete Test Suite
-
-From the project root:
-
-```powershell
-ctest --test-dir build --output-on-failure
-```
-
-**Latest verified development result: 109 out of 109 tests passing.**
-
-### Automatic Flush Tests
-
-The project also includes standalone tests for automatic flushing and recovery:
-
-```powershell
-.\build\auto_flush_manual_test.exe
-```
-
-```powershell
-.\build\auto_flush_recovery_test.exe
-```
-
-These tests exercise threshold-triggered flushing and persistence after reopening the database.
-
-### REST API Integration Verification
-
-The HTTP API has been tested for:
-
-- Health checks.
-- PUT and update operations.
-- GET operations.
-- Range scans.
-- Statistics.
-- DELETE operations.
-- Missing-key responses.
-- Automatic flushing through the configured threshold.
-
-Restart persistence was also verified by writing a key, stopping the server, restarting it, and retrieving the stored value.
-
----
-
-## Benchmarking
-
-StrataDB includes a standalone benchmark executable that measures the performance of selected storage-engine operations.
-
-The benchmark covers:
-
-| Operation | Description |
-|---|---|
-| PUT | Measures individual writes to the MemTable |
-| GET | Measures reads from a database prepared with flushed SSTable data |
-| Range Scan | Measures ordered range scans |
-| Compaction | Measures SSTable compaction |
-
-### Build the Benchmark
-
-The benchmark is included in the CMake build:
+Build and run all discovered tests:
 
 ```powershell
 cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-### Run the Benchmark
+The latest verified result is **110/110 tests passed**. Coverage includes SkipList, MemTable, WAL, SSTable, BloomFilter, Manifest/recovery, Database merge and tombstone behavior, automatic flushing, compaction, statistics, and project-level tests. The Data Explorer’s backend correctness is covered by the Database listing/merge test and the `/records` server path; browser interaction checks remain manual.
 
-Run with the default dataset size of 1,000 records:
+Frontend checks:
+
+```powershell
+cd frontend
+npm run build
+npm run lint
+```
+
+## Benchmarks
+
+The benchmark creates temporary databases, verifies results, and writes CSV output:
 
 ```powershell
 .\build\stratadb_benchmark.exe
+.\build\stratadb_benchmark.exe 5000 .\benchmarks\results\custom.csv
 ```
 
-Specify a dataset size:
+The checked-in 1,000-record run in [`benchmarks/results/stratadb_benchmark.csv`](benchmarks/results/stratadb_benchmark.csv) reports:
 
-```powershell
-.\build\stratadb_benchmark.exe 5000
+| Operation | Throughput (ops/s) | Average | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|---:|
+| PUT to MemTable | 1,358.043 | 736.354 us | 639.500 us | 1,715.900 us | 2,267.300 us |
+| GET from SSTable | 299,025.178 | 3.344 us | 2.900 us | 5.000 us | 5.600 us |
+| Range scan | 481.108 | 2,078.533 us | 1,943.500 us | 1,943.500 us | 1,943.500 us |
+| Compaction | 33.717 | 29,658.800 us | 29,658.800 us | 29,658.800 us | 29,658.800 us |
+
+These are local measurements, not production SLOs. Hardware, build mode, filesystem, and dataset shape affect results.
+
+## Deployment architecture
+
+```mermaid
+flowchart LR
+    Browser[User browser] --> Vercel[Vercel React app]
+    Vercel -->|VITE_API_BASE_URL over HTTPS| Railway[Railway C++ server]
+    Railway --> Volume[/data persistent volume/]
+    Volume --> Files[wal.log, MANIFEST, sstables/]
 ```
 
-Specify both dataset size and output CSV path:
+The Dockerfile builds `stratadb_server` and starts it with `/data`. Railway supplies `PORT`; the container sets `HOST=0.0.0.0`. The frontend is configured with `VITE_API_BASE_URL=https://stratadb-production.up.railway.app`. The volume preserves database files across restarts and deployments. Deployment steps are in [docs/deployment/deployment-guide.md](docs/deployment/deployment-guide.md).
 
-```powershell
-.\build\stratadb_benchmark.exe 1000 .\benchmark-results.csv
-```
+## Current limitations
 
-By default, results are written to:
+- `/records` returns the complete visible dataset; filtering and pagination are frontend-side, so very large datasets are not bounded at the API boundary.
+- HTTP handlers share one mutex, serializing storage operations and limiting concurrency.
+- There is no authentication or authorization.
+- The server enables `Access-Control-Allow-Origin: *`; deployment should restrict this before handling sensitive data.
+- TLS is expected from the hosting proxy, not implemented in the C++ server.
+- WAL appends flush the stream but do not expose an `fsync`/durability acknowledgement.
+- Recovery validates and truncates incomplete WAL tails, but malformed records fail opening; there is no repair tool.
+- Compaction is an explicit operation and does not run as a background scheduler.
+- Bloom filters can produce false positives and only optimize lookups; they never establish key absence alone.
+- The benchmark is a local baseline, not a distributed or production scalability test.
 
-```text
-benchmarks/results/stratadb_benchmark.csv
-```
+## Future improvements
 
-The generated CSV includes:
+Potential next steps are bounded server-side listing, authentication, restricted CORS, TLS-aware deployment policy, background compaction, richer observability, stronger durability controls, and larger-scale benchmark comparisons.
 
-- Dataset size.
-- Number of operations.
-- Total execution time.
-- Throughput.
-- Average latency.
-- p50 latency.
-- p95 latency.
-- p99 latency.
-- Returned record count where applicable.
+## Screenshots
 
-### Initial Local Benchmark Results
+No dashboard screenshots are currently stored in the repository. Capture these manually for portfolio documentation:
 
-The following measurements were collected during local development.
+1. Overview dashboard
+2. Data Explorer table
+3. Record details panel
+4. Range Scan
+5. Statistics
 
-| Operation | 500 records | 1,000 records | 5,000 records |
-|---|---:|---:|---:|
-| PUT throughput (ops/sec) | 2,011.74 | 1,230.51 | 346.69 |
-| GET throughput (ops/sec) | 399,265.35 | 1,120,071.69 | 448,153.16 |
-| Range scan time (ms, 3 scans) | 5.936 | 9.851 | 27.221 |
-| Compaction time (ms) | 16.632 | 23.436 | 50.198 |
-| Verified records after compaction | 500 | 1,000 | 5,000 |
+## Documentation
 
-**Benchmark notes:**
-
-- These are initial local measurements, not universal performance guarantees.
-- GET measurements use a database prepared with flushed SSTable data and may benefit from operating-system caching.
-- Range scans use three repetitions per dataset; percentile values from such a small sample should not be treated as statistically representative.
-- Results depend on hardware, compiler settings, operating system, dataset size, and runtime conditions.
-- These benchmarks are intended to provide a repeatable baseline for future optimization.
-
----
-
-## Current Limitations
-
-StrataDB is an educational and portfolio-oriented storage-engine project. It demonstrates important database concepts, but it should not yet be treated as a production database.
-
-Current engineering limitations include:
-
-- Stronger operating-system-level durability guarantees.
-- More extensive crash and recovery testing.
-- Compaction crash consistency and orphan-file cleanup.
-- Manifest and SSTable consistency validation.
-- Concurrency control and stress testing.
-- More comprehensive REST API error handling.
-- Authentication and TLS.
-- Restricted CORS before public exposure.
-- Broader benchmark comparisons against established storage engines.
-
-The HTTP server currently serializes requests using a mutex, and its development CORS configuration should not be considered production-ready.
-
-In particular, the project does not currently claim a complete operating-system-level durability strategy using explicit `fsync` or Windows `FlushFileBuffers` calls.
-
----
+Start at [docs/README.md](docs/README.md) for the documentation map. The primary comprehensive textbook remains preserved at [`docs/StrataDB_Textbook.pdf`](docs/StrataDB_Textbook.pdf); the linked Markdown chapters record the final `/records` API, Data Explorer, deployment, and verified test results.
 
 ## Author
 
-**Amritanshu Singh**
-
-- GitHub: [Amrittt22](https://github.com/Amrittt22)
-- Project Repository: [StrataDB](https://github.com/Amrittt22/StrataDB)
-- Live Dashboard: [StrataDB](https://frontend-amrit7.vercel.app/)
-
----
-
-<p align="center">
-  <strong>StrataDB</strong>
-  <br/>
-  Exploring how storage engines work, one component at a time.
-</p>
+Built by [Amritanshu](https://github.com/Amrittt22).
