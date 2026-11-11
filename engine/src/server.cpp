@@ -401,18 +401,24 @@ int main(int argc, char* argv[]) {
     // SERVER STARTUP
     // ------------------------------------------------
 
-    std::cout << "=================================\n";
+       std::cout << "=================================\n";
     std::cout << "       StrataDB HTTP Server\n";
     std::cout << "=================================\n";
     std::cout << "Data directory: " << dataDirectory << '\n';
     std::cout << "Port: " << port << '\n';
     std::cout << "Flush threshold: " << flushThreshold << '\n';
-    std::cout << "Health: http://127.0.0.1:"
-              << port << "/health\n";
+
+    // Use Railway's HOST when deployed.
+    // Otherwise, default to localhost for local development.
+    const char* hostEnv = std::getenv("HOST");
+    const std::string host =
+        (hostEnv && *hostEnv) ? hostEnv : "127.0.0.1";
+
+    std::cout << "Health: http://" << host
+              << ":" << port << "/health\n";
     std::cout << "=================================\n";
 
-    // Bind to localhost for development.
-    if (!server.listen("127.0.0.1", port)) {
+    if (!server.listen(host, port)) {
         std::cerr << "Failed to start HTTP server\n";
         return 1;
     }
