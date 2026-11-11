@@ -43,15 +43,19 @@ The project includes a C++ HTTP REST API, a React and TypeScript dashboard, and 
 
 ## Live Demo
 
-**Live Dashboard:** https://frontend-amrit7.vercel.app/
+StrataDB is deployed and accessible through the following links:
 
-**Backend API:** https://stratadb-production.up.railway.app
+- **Live Dashboard:** [https://frontend-amrit7.vercel.app/](https://frontend-amrit7.vercel.app/)
+- **Backend Health Check:** [https://stratadb-production.up.railway.app/health](https://stratadb-production.up.railway.app/health)
+- **GitHub Repository:** [https://github.com/Amrittt22/StrataDB](https://github.com/Amrittt22/StrataDB)
 
-**Health Check:** https://stratadb-production.up.railway.app/health
+### Deployment
 
-**GitHub Repository:** https://github.com/Amrittt22/StrataDB
+- **Frontend:** React + TypeScript, hosted on Vercel.
+- **Backend:** C++ REST API, hosted on Railway.
+- **Storage:** Railway Persistent Volume mounted at `/data`.
 
-The live dashboard communicates with the deployed C++ backend through HTTP REST APIs.
+The frontend communicates with the C++ backend through HTTP REST APIs. The backend health endpoint confirms server availability.
 
 Visitors can interact with the storage engine through the dashboard, including inserting, retrieving, updating, deleting, and scanning key-value records.
 
